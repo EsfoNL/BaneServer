@@ -3,8 +3,10 @@ use clap::Parser;
 use warp::http::Response;
 use warp::{filters, Filter};
 
+mod api;
 mod cli;
 mod db;
+mod message;
 mod prelude;
 mod state;
 mod websocket;
@@ -28,12 +30,11 @@ async fn main() {
     let api_v0_ws = warp::path("ws")
         .and(filters::ws::ws())
         .and(state::add_default(state.clone()))
-        .and_then(websocket::handler)
-        .recover(|_| "");
+        .then(websocket::handler);
 
     let api_v0_poll_messages = warp::path("poll_messages")
         .and(state::add_default(state.clone()))
-        .map(todo!());
+        .then();
 
     // version 0 of the api
     let api_v0 = warp::path("api/v0/").and(api_v0_ws.or(api_v0_poll_messages));

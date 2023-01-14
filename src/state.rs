@@ -1,12 +1,15 @@
-use crate::{cli::Cli, db::DbOptions};
-use std::{convert::Infallible, sync::{Arc, Mutex, mpsc::{channel, Receiver, Sender}}};
-use warp::{Filter, filters};
-use dashmap::DashMap;
+use crate::prelude::*;
+use std::{convert::Infallible, sync::Arc};
+use tokio::sync::mpsc::Sender;
+use warp::{
+    filters::{self, BoxedFilter},
+    Filter,
+};
 
 pub struct State {
     pub db: DbOptions,
     pub args: Cli,
-    pub subscribers: dashmap::DashMap<String, Sender>
+    pub subscribers: dashmap::DashMap<String, Sender<Message>>,
 }
 
 impl State {
@@ -14,15 +17,15 @@ impl State {
         State {
             db: crate::db::configure(&args).await,
             args,
-            subscribers: DashMap<String, Sender<Message>>;
+            subscribers: dashmap::DashMap::new(),
         }
     }
 }
 
-pub fn add_default(
-    state: Arc<State>,
-) -> impl Filter<Extract = (Arc<State>,), Error = Infallible> + Clone {
-    warp::filters::any::any().map(move || state.clone())
+pub fn add_default(state: Arc<State>) -> BoxedFilter<(Arc<State>, String, String)> {
+    warp::filters::any::any()
+        .map(move || state.clone())
         .and(filters::header::header::<String>("Name"))
         .and(filters::header::header::<String>("Token"))
+        .boxed()
 }

@@ -1,6 +1,6 @@
-use sqlx::{Connection, Executor, QueryBuilder};
-use warp::{http, ws::WebSocket};
+use sqlx::{Connection, Executor, QueryBuilder, Row};
 use warp::ws::Ws;
+use warp::{http, ws::WebSocket};
 
 use crate::prelude::*;
 
@@ -9,25 +9,9 @@ pub async fn handler(
     state: Arc<State>,
     id: String,
     token: String,
-) -> Result<(), impl Into<http::Error>> {
+) -> Result<(), http::StatusCode> {
     let con = Db::connect_with(&state.db);
-    if let Ok(con) = con.await {
-        let query = con
-            .fetch_one(
-                QueryBuilder::new("select id, expired from tokens where token = ?")
-                    .push_bind(token)
-                    .build(),
-            )
-            .await
-        
-        
-    } else {
-        eprintln!("cannot connect to database");
-        Err(http::Error::from(500))
-    }
-    todo!()
+    if 
 }
 
-async fn websocket_handler(websocket: WebSocket, name) {
-    
-}
+async fn websocket_handler(websocket: WebSocket, id: String, state: Arc<State>) {}
