@@ -2,24 +2,27 @@ use clap::Parser;
 
 #[derive(Parser)]
 pub struct Cli {
-    #[arg(short, long)]
+    #[arg(long)]
     pub port: Option<String>,
 
-    #[arg(short, long)]
+    #[arg(long)]
+    pub server_host: Option<std::net::IpAddr>,
+
+    #[arg(long)]
     pub verbose: bool,
 
-    #[arg(short, long)]
+    #[arg(long)]
     pub files: Option<String>,
 
-    #[arg(short, long)]
+    #[arg(long)]
     pub sqlserver: Option<String>,
 
-    #[arg(short, long)]
+    #[arg(long)]
     pub sqlport: Option<u16>,
 
-    #[arg(short, long)]
+    #[arg(long)]
     pub sqlpassword: Option<String>,
 
-    #[arg(short, long)]
+    #[arg(long)]
     pub sqlusername: Option<String>,
 }

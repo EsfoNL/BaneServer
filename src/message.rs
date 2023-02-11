@@ -1,1 +1,6 @@
-pub struct Message;
+use crate::prelude::*;
+
+pub struct Message {
+    message: String,
+    id: Id,
+}

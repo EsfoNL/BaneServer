@@ -1,13 +1,16 @@
 [package]
-name = "BaneServer"
+name = "bane_server"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+argon2 = "0.4.1"
 clap = { version = "4.0.32", features = ["derive"] }
 dashmap = "5.4.0"
+futures = "0.3.25"
+serde_json = "1.0.93"
 sqlx = { version = "0.6.2", features = ["runtime-tokio-native-tls", "mysql"] }
 tokio = { version = "1.23.0", features = ["full"] }
 warp = "0.3.3"

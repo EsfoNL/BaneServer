@@ -1,22 +1,15 @@
 use crate::cli::Cli;
 use crate::prelude::*;
 use sqlx::{mysql::MySqlConnectOptions, Connection, Executor, MySqlConnection, QueryBuilder, Row};
-use warp::http;
+use warp::{http, Reply};
 
-pub type DbOptions = MySqlConnectOptions;
-pub type Db = MySqlConnection;
-
-pub async fn configure(args: &Cli) -> DbOptions {
+pub async fn configure(args: &Cli) -> Db {
     let options =
         MySqlConnectOptions::new().host(args.sqlserver.as_ref().map_or("127.0.0.1", |e| &e));
-    todo!()
+    Db::connect(options).await.unwrap()
 }
 
-pub async fn check_credentials(
-    state: Arc<State>,
-    id: String,
-    token: String,
-) -> Result<(), http::StatusCode> {
+pub async fn check_credentials(state: Arc<State>, id: &String, token: &String) -> http::StatusCode {
     let con = Db::connect_with(&state.db);
     if let Ok(mut con) = con.await {
         let query = con
@@ -28,16 +21,16 @@ pub async fn check_credentials(
             .await;
         if let Ok(e) = query {
             let db_id: String = e.get(0);
-            if id == db_id {
-                return Ok(());
+            if id == &db_id {
+                return http::StatusCode::OK;
             } else {
-                return Err(http::StatusCode::UNAUTHORIZED);
+                return http::StatusCode::UNAUTHORIZED;
             }
         } else {
-            return Err(http::StatusCode::UNAUTHORIZED);
+            return http::StatusCode::UNAUTHORIZED;
         }
     } else {
         eprintln!("cannot connect to database");
-        return Err(http::StatusCode::INTERNAL_SERVER_ERROR);
+        return http::StatusCode::INTERNAL_SERVER_ERROR;
     }
 }

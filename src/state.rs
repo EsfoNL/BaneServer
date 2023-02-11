@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use sqlx::MySqlConnection;
 use std::{convert::Infallible, sync::Arc};
 use tokio::sync::mpsc::Sender;
 use warp::{
@@ -7,7 +8,7 @@ use warp::{
 };
 
 pub struct State {
-    pub db: DbOptions,
+    pub db: Db,
     pub args: Cli,
     pub subscribers: dashmap::DashMap<String, Sender<Message>>,
 }
@@ -22,10 +23,10 @@ impl State {
     }
 }
 
-pub fn add_default(state: Arc<State>) -> BoxedFilter<(Arc<State>, String, String)> {
-    warp::filters::any::any()
-        .map(move || state.clone())
-        .and(filters::header::header::<String>("Name"))
-        .and(filters::header::header::<String>("Token"))
-        .boxed()
+pub fn add_token() -> BoxedFilter<(String,)> {
+    warp::filters::any::any().and(warp::header("Token")).boxed()
+}
+
+pub fn add_default(state: Arc<State>) -> BoxedFilter<(Arc<State>,)> {
+    warp::filters::any::any().map(move || state.clone()).boxed()
 }
