@@ -1,20 +1,29 @@
-use std::error::Error;
-
-use crate::{db, prelude::*};
+use crate::prelude::*;
 use futures::{SinkExt, StreamExt};
+use sqlx::Executor;
+use warp::ws::WebSocket;
 use warp::ws::Ws;
-use warp::{http, ws::WebSocket};
+use warp::Reply;
 
-pub async fn handler(websocket: Ws, state: Arc<State>, token: String) -> impl warp::Reply {
-    // let con = Db::connect_with(&state.db).await;
-    // if let Ok(db_con) = con {
-    // let login_result = db::check_credentials(state.clone(), &id, &token).await;
-    // if login_result == http::StatusCode::OK {
-    let id = 0;
-    return websocket.on_upgrade(move |ws| websocket_handler(ws, state, id));
+pub async fn handler(websocket: Ws, state: Arc<State>, token: String, id: Id) -> impl warp::Reply {
+    if state
+        .db
+        .fetch_one(sqlx::query!(
+            "select hash, salt from ACCOUNTS where id = ?",
+            id
+        ))
+        .await
+        .is_err()
+    {
+        return warp::http::StatusCode::BAD_REQUEST.into_response();
+    }
+
+    return websocket
+        .on_upgrade(move |ws| websocket_handler(ws, state, id))
+        .into_response();
 }
 
-async fn websocket_handler(mut ws: WebSocket, state: Arc<State>, id: Id) {
+async fn websocket_handler(mut ws: WebSocket, _state: Arc<State>, _id: Id) {
     println!("handler!");
     while let Some(value) = ws.next().await {
         ws.send(value.unwrap()).await.unwrap()

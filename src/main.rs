@@ -1,7 +1,7 @@
 use clap::Parser;
 
 use warp::http::Response;
-use warp::{filters, Filter, Reply};
+use warp::{filters, Filter};
 
 mod api;
 mod cli;
@@ -22,13 +22,13 @@ async fn main() {
     let api_v0_ws = warp::path("ws")
         .and(filters::ws::ws())
         .and(state::add_default(state.clone()))
-        .and(state::add_token())
+        .and(state::add_token_id())
         .then(websocket::handler)
         .boxed();
 
     let api_v0_poll_messages = warp::path("poll_messages")
         .and(state::add_default(state.clone()))
-        .and(state::add_token())
+        .and(state::add_token_id())
         .map(|_state, _token| warp::reply())
         .boxed();
 
@@ -38,10 +38,23 @@ async fn main() {
         .and(warp::header("Password"))
         .then(api::login);
 
+    let api_v0_register = warp::path("register")
+        .and(state::add_default(state.clone()))
+        .and(warp::header("Email"))
+        .and(warp::header("Password"))
+        .and(warp::header("Name"))
+        .then(api::register);
+
     // version 0 of the api
     let api_v0 = warp::path("api")
         .and(warp::path("v0"))
-        .and(api_v0_poll_messages.or(api_v0_ws).or(api_v0_login).or(ok))
+        .and(
+            api_v0_poll_messages
+                .or(api_v0_ws)
+                .or(api_v0_login)
+                .or(api_v0_register)
+                .or(ok),
+        )
         .boxed();
 
     // create adrress from command line arguments

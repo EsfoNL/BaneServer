@@ -1,11 +1,8 @@
 use crate::prelude::*;
-use sqlx::MySqlConnection;
-use std::{convert::Infallible, sync::Arc};
+
+use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
-use warp::{
-    filters::{self, BoxedFilter},
-    Filter,
-};
+use warp::{filters::BoxedFilter, Filter};
 
 pub struct State {
     pub db: Db,
@@ -23,8 +20,11 @@ impl State {
     }
 }
 
-pub fn add_token() -> BoxedFilter<(String,)> {
-    warp::filters::any::any().and(warp::header("Token")).boxed()
+pub fn add_token_id() -> BoxedFilter<(String, u64)> {
+    warp::filters::any::any()
+        .and(warp::header("Token"))
+        .and(warp::header("Id"))
+        .boxed()
 }
 
 pub fn add_default(state: Arc<State>) -> BoxedFilter<(Arc<State>,)> {

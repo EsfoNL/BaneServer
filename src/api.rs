@@ -1,30 +1,42 @@
-use argon2::PasswordHasher;
+use argon2::{password_hash::Output, PasswordHasher};
+use rand::{
+    distributions::{Alphanumeric, DistString, Standard},
+    prelude::Distribution,
+    RngCore,
+};
 use sqlx::{mysql::MySqlConnectOptions, Connection, Executor, MySqlConnection, Row};
 use warp::Reply;
 
 use crate::prelude::*;
 use serde_json::{json, Serializer};
 
-async fn poll_messages(state: State, id: Id, token: String) {}
+pub async fn poll_messages(state: Arc<State>, id: Id, token: String) {}
 
 pub async fn login(state: Arc<State>, email: String, password: String) -> impl Reply {
     let query = state
         .db
-        .fetch_one(sqlx::query("select id, hash, salt from ACCOUNTS where email = ?").bind(email))
+        .fetch_one(sqlx::query!(
+            "select id, hash, salt, name, num from ACCOUNTS where email = ?",
+            email
+        ))
         .await;
     if let Ok(data) = query {
-        let argon = argon2::Argon2::default();
-
-        let hash = argon
-            .hash_password(password.as_bytes(), data.get::<&str, _>("hash"))
-            .map(|h| h.to_string());
+        let hash = hash_password(&password, &data.get("salt"));
         let db_hash: String = data.get("hash");
-        if Ok(db_hash) == hash {
-            if let Ok((token, refresh_token)) = generate_tokens(data.get("id"), &mut state.db).await
-            {
+        if db_hash == hash {
+            if let Ok((token, refresh_token)) = generate_tokens(data.get("id"), &state.db).await {
                 warp::http::Response::builder()
                     .status(200)
-                    .body(json!({"token": token, "refresh_token": refresh_token,}).to_string())
+                    .body(
+                        json!({
+                            "token": token,
+                            "refresh_token": refresh_token,
+                            "id": data.get::<u64, _>("id"),
+                            "name": data.get::<String, _>("name"),
+                            "num": data.get::<u16, _>("num")
+                        })
+                        .to_string(),
+                    )
                     .into_response()
             } else {
                 warp::http::StatusCode::INTERNAL_SERVER_ERROR.into_response()
@@ -38,9 +50,156 @@ pub async fn login(state: Arc<State>, email: String, password: String) -> impl R
 }
 
 /// (Token, RefreshToken)
-async fn generate_tokens(id: Id, db: &mut MySqlConnection) -> Result<(String, String), ()> {
-    db.execute(sqlx::query("delete from TOKENS where id = ?").bind(id));
-    // con = Db::connect_with(db).await.map_err(|e| ())?;
-    db.execute(sqlx::query("delete from REFRESH_TOKENS where id = ?").bind(id));
-    todo!();
+async fn generate_tokens(id: Id, db: &Db) -> Result<(String, String), ()> {
+    println!("hello world!");
+    // remove old tokens
+    db.execute(sqlx::query!("delete from TOKENS where id = ?", id));
+    db.execute(sqlx::query!("delete from REFRESH_TOKENS where id = ?", id));
+
+    let (token, token_salt) = generate_token_salt();
+    let (refresh_token, refresh_token_salt) = generate_token_salt();
+
+    // generate salts and hashes
+    let token_hash = hash_password(&token, &token_salt);
+    let refresh_token_hash = hash_password(&refresh_token, &refresh_token_salt);
+
+    let token_expiry = chrono::Local::now() + chrono::Days::new(7);
+    let refresh_token_expiry = chrono::Local::now() + chrono::Days::new(30);
+    let mut transaction = db.begin().await.unwrap();
+    let query1 = transaction
+        .execute(sqlx::query!(
+            "insert into REFRESH_TOKENS values (?, ?, ?, ?)",
+            id,
+            refresh_token_hash,
+            refresh_token_salt,
+            refresh_token_expiry
+        ))
+        .await;
+    let query2 = transaction
+        .execute(sqlx::query!(
+            "insert into TOKENS values (?, ?, ?, ?)",
+            id,
+            token_hash,
+            token_salt,
+            token_expiry
+        ))
+        .await;
+    if query1.is_ok() && query2.is_ok() {
+        if transaction.commit().await.is_ok() {
+            return Ok((token, refresh_token));
+        } else {
+            Err(())
+        }
+    } else {
+        println!("token error: {:#?}, {:#?}!", query1, query2);
+        Err(())
+    }
+}
+
+fn generate_token_salt() -> (String, String) {
+    let mut rng = rand::thread_rng();
+    let token = Alphanumeric.sample_string(&mut rng, TOKEN_LENGTH);
+    let token_salt = Alphanumeric.sample_string(&mut rng, SALT_LENGTH);
+    (token, token_salt)
+}
+
+pub fn hash_password(password: &String, salt: &String) -> String {
+    let argon = argon2::Argon2::default();
+    let hash = argon
+        .hash_password(password.as_bytes(), salt.as_str())
+        .unwrap();
+    let mut hash_string = [0u8; 86];
+    hash.hash
+        .unwrap()
+        .b64_encode(&mut hash_string)
+        .unwrap()
+        .to_string()
+}
+
+fn generate_hash_password(password: &String) -> (String, String) {
+    let mut rng = rand::thread_rng();
+    let argon = argon2::Argon2::default();
+    let salt = Alphanumeric.sample_string(&mut rng, SALT_LENGTH);
+    let hash = argon
+        .hash_password(password.as_bytes(), salt.as_str())
+        .unwrap();
+    println!("pw: {password}, hash: {:?}", hash.hash);
+    let mut hash_string = [0u8; 86];
+    (
+        hash.hash
+            .unwrap()
+            .b64_encode(&mut hash_string)
+            .unwrap()
+            .to_string(),
+        salt,
+    )
+}
+
+pub async fn register(
+    state: Arc<State>,
+    email: String,
+    password: String,
+    name: String,
+) -> impl Reply {
+    println!("registration attempt!");
+    let mut transaction = state.db.begin().await.unwrap();
+    if transaction
+        .fetch_optional(sqlx::query!(
+            "select * from ACCOUNTS where email = ?",
+            email
+        ))
+        .await
+        .unwrap()
+        .is_some()
+    {
+        return warp::http::Response::builder()
+            .status(409)
+            .body("there already exists an account with this email");
+    }
+    let (hash, salt) = generate_hash_password(&password);
+
+    let num: u16 = (transaction
+        .fetch_one(sqlx::query!(
+            "select COUNT(num) as numcount from ACCOUNTS where name = ?",
+            name
+        ))
+        .await
+        .unwrap()
+        .get::<i64, _>(0)
+        + 1) as u16;
+    let id: Id = (transaction
+        .fetch_one(sqlx::query!("select COUNT(id) as idcount from ACCOUNTS"))
+        .await
+        .unwrap()
+        .get::<i64, _>(0)
+        + 1) as u64;
+    if num > 9999 {
+        return warp::http::Response::builder()
+            .status(409)
+            .body("too many people with this username");
+    }
+    if let Err(e) = transaction
+        .execute(sqlx::query!(
+            "insert into ACCOUNTS values (?, ?, ?, ?, ?, ?)",
+            id,
+            email,
+            hash,
+            salt,
+            name,
+            num
+        ))
+        .await
+    {
+        println!("{:?}", e);
+        return warp::http::Response::builder()
+            .status(500)
+            .body("creation error");
+    }
+    if transaction.commit().await.is_err() {
+        println!("almost succesfull");
+        return warp::http::Response::builder().status(500).body("");
+    }
+    warp::http::Response::builder()
+        .status(200)
+        .body("registration succesfull")
 }

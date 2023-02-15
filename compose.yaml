@@ -1,10 +1,11 @@
 services:
   mysql:
     image: mysql
+    command: mysqld --general-log=1
     volumes:
       - sql-db:/var/lib/mysql
     environment:
-      MYSQL_DATABASE: name
+      MYSQL_DATABASE: db
       MYSQL_ROOT_PASSWORD: root
     ports:
       - 3306:3306
