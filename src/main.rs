@@ -77,5 +77,21 @@ async fn main() {
         ok.or(api_v0)
             .or(warp::any().map(|| Response::builder().status(404).body(String::from("404")))),
     );
-    warp::serve(req).run(addr).await;
+
+    if cfg!(debug_assertions) {
+        warp::serve(req).run(addr).await;
+    } else {
+        let addr1 = std::net::SocketAddr::new(
+            // use localhost as
+            [185, 107, 90, 38].into(),
+            443,
+        );
+
+        let server = warp::serve(req);
+        server
+            .tls()
+            .key_path("/etc/letsencrypt/live/esfokk.nl/privkey.pem")
+            .cert_path("/etc/letsencrypt/live/esfokk.nl/fullchain.pem")
+            .run(addr1);
+    }
 }
