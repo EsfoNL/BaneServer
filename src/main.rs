@@ -92,6 +92,7 @@ async fn main() {
             .tls()
             .key_path("/etc/letsencrypt/live/esfokk.nl/privkey.pem")
             .cert_path("/etc/letsencrypt/live/esfokk.nl/fullchain.pem")
-            .run(addr1);
+            .run(addr1)
+            .await;
     }
 }
