@@ -29,7 +29,7 @@ async fn main() {
     let api_v0_poll_messages = warp::path("poll_messages")
         .and(state::add_default(state.clone()))
         .and(state::add_token_id())
-        .map(|_state, _token| warp::reply())
+        .map(|_state, _token, _id| warp::reply())
         .boxed();
 
     let api_v0_login = warp::path("login")

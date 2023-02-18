@@ -1,21 +1,37 @@
 use crate::prelude::*;
 
+use futures::{channel::mpsc::Sender, lock::Mutex};
+use sqlx::{Executor, Row};
 use std::sync::Arc;
-use tokio::sync::mpsc::Sender;
 use warp::{filters::BoxedFilter, Filter};
 
 pub struct State {
     pub db: Db,
     pub args: Cli,
-    pub subscribers: dashmap::DashMap<String, Sender<Message>>,
+    pub subscribers: dashmap::DashMap<Id, Sender<RecvMessage>>,
+    pub users: Mutex<rangemap::RangeInclusiveSet<Id>>,
 }
 
 impl State {
     pub async fn new(args: Cli) -> Self {
+        let db = crate::db::configure(&args).await;
+        let subscribers = dashmap::DashMap::new();
+        let mut users = rangemap::RangeInclusiveSet::new();
+
+        for i in db
+            .fetch_all(sqlx::query!("select id from ACCOUNTS"))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.get::<Id, _>(0))
+        {
+            users.insert(i..=i);
+        }
         State {
-            db: crate::db::configure(&args).await,
+            db,
             args,
-            subscribers: dashmap::DashMap::new(),
+            subscribers,
+            users: Mutex::new(users),
         }
     }
 }

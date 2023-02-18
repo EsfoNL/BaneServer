@@ -1,4 +1,5 @@
 use argon2::{password_hash::Output, PasswordHasher};
+use chrono::NaiveDate;
 use rand::{
     distributions::{Alphanumeric, DistString, Standard},
     prelude::Distribution,
@@ -21,7 +22,7 @@ pub async fn login(state: Arc<State>, email: String, password: String) -> impl R
         ))
         .await;
     if let Ok(data) = query {
-        let hash = hash_password(&password, &data.get("salt"));
+        let hash = hash_data(&password, &data.get("salt"));
         let db_hash: String = data.get("hash");
         if db_hash == hash {
             if let Ok((token, refresh_token)) = generate_tokens(data.get("id"), &state.db).await {
@@ -53,18 +54,22 @@ pub async fn login(state: Arc<State>, email: String, password: String) -> impl R
 async fn generate_tokens(id: Id, db: &Db) -> Result<(String, String), ()> {
     println!("hello world!");
     // remove old tokens
-    db.execute(sqlx::query!("delete from TOKENS where id = ?", id));
-    db.execute(sqlx::query!("delete from REFRESH_TOKENS where id = ?", id));
+    db.execute(sqlx::query!("delete from TOKENS where id = ?", id))
+        .await
+        .unwrap();
+    db.execute(sqlx::query!("delete from REFRESH_TOKENS where id = ?", id))
+        .await
+        .unwrap();
 
     let (token, token_salt) = generate_token_salt();
     let (refresh_token, refresh_token_salt) = generate_token_salt();
 
     // generate salts and hashes
-    let token_hash = hash_password(&token, &token_salt);
-    let refresh_token_hash = hash_password(&refresh_token, &refresh_token_salt);
+    let token_hash = hash_data(&token, &token_salt);
+    let refresh_token_hash = hash_data(&refresh_token, &refresh_token_salt);
 
-    let token_expiry = chrono::Local::now() + chrono::Days::new(7);
-    let refresh_token_expiry = chrono::Local::now() + chrono::Days::new(30);
+    let token_expiry = time() + chrono::Days::new(7);
+    let refresh_token_expiry = time() + chrono::Days::new(30);
     let mut transaction = db.begin().await.unwrap();
     let query1 = transaction
         .execute(sqlx::query!(
@@ -103,7 +108,7 @@ fn generate_token_salt() -> (String, String) {
     (token, token_salt)
 }
 
-pub fn hash_password(password: &String, salt: &String) -> String {
+pub fn hash_data(password: &String, salt: &String) -> String {
     let argon = argon2::Argon2::default();
     let hash = argon
         .hash_password(password.as_bytes(), salt.as_str())
@@ -167,12 +172,8 @@ pub async fn register(
         .unwrap()
         .get::<i64, _>(0)
         + 1) as u16;
-    let id: Id = (transaction
-        .fetch_one(sqlx::query!("select COUNT(id) as idcount from ACCOUNTS"))
-        .await
-        .unwrap()
-        .get::<i64, _>(0)
-        + 1) as u64;
+    let mut lock = state.users.lock().await;
+    let id: Id = lock.gaps(&(0..=Id::MAX)).next().unwrap().start().clone();
     if num > 9999 {
         return warp::http::Response::builder()
             .status(409)
@@ -199,7 +200,40 @@ pub async fn register(
         println!("almost succesfull");
         return warp::http::Response::builder().status(500).body("");
     }
+    lock.insert(id..=id);
     warp::http::Response::builder()
         .status(200)
         .body("registration succesfull")
+}
+
+pub async fn validate_token(token: &String, id: Id, db: &Db) -> Result<(), ()> {
+    let data = db
+        .fetch_one(sqlx::query!(
+            "select token_hash, salt, token_expiry from TOKENS where id = ?",
+            id
+        ))
+        .await
+        .map_err(|_| ())?;
+    let hash = hash_data(token, &data.get("salt"));
+    if hash != data.get::<String, _>("token_hash") {
+        println!(
+            "actual_token: {}, token: {}",
+            data.get::<String, _>("token_hash"),
+            hash
+        );
+        return Err(());
+    }
+    if data.get::<Time, _>("token_expiry") > time() {
+        Ok(())
+    } else {
+        db.execute(sqlx::query!("delete from TOKENS where id = ?", id))
+            .await
+            .unwrap();
+        Err(())
+    }
+}
+
+pub type Time = chrono::DateTime<chrono::Local>;
+pub fn time() -> Time {
+    chrono::Local::now()
 }
