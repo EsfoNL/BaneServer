@@ -12,7 +12,7 @@ pub async fn configure(args: &Cli) -> Db {
             .database("db");
         Db::connect_with(options).await.unwrap()
     } else {
-        Db::connect("mysql:///var?socket=/var/run/mysqld/mysqld.sock")
+        Db::connect("mysql:///db?socket=/var/run/mysqld/mysqld.sock")
             .await
             .unwrap()
     }
