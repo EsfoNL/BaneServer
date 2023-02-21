@@ -172,8 +172,7 @@ pub async fn register(
         .unwrap()
         .get::<i64, _>(0)
         + 1) as u16;
-    let mut lock = state.users.lock().await;
-    let id: Id = lock.gaps(&(0..=Id::MAX)).next().unwrap().start().clone();
+    let id: Id = transaction.fetch_one(sqlx::query!("select ab.id from ACCOUNTS as ab where not exists ( select * from ACCOUNTS as aa where aa.id = ab.id + 1 ) order by id asc limit 1;")).await.unwrap().get::<Id, _>(0) + 1;
     if num > 9999 {
         return warp::http::Response::builder()
             .status(409)
@@ -200,7 +199,6 @@ pub async fn register(
         println!("almost succesfull");
         return warp::http::Response::builder().status(500).body("");
     }
-    lock.insert(id..=id);
     warp::http::Response::builder()
         .status(200)
         .body("registration succesfull")
