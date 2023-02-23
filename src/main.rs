@@ -16,7 +16,7 @@ use prelude::*;
 async fn main() {
     let args = cli::Cli::parse();
     let state = Arc::new(State::new(args).await);
-    let ok = warp::path("ok").map(|| warp::reply());
+    let ok = warp::path("").then(ok);
 
     // websocket connection for when user is in app.
     let api_v0_ws = warp::path("ws")
@@ -95,4 +95,16 @@ async fn main() {
             .run(addr1)
             .await;
     }
+}
+
+async fn ok() -> impl warp::Reply {
+    use maud::*;
+    warp::http::Response::builder().body(
+        html! {
+            h1 {
+                "hello world!"
+            }
+        }
+        .into_string(),
+    )
 }
