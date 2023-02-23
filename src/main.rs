@@ -86,14 +86,27 @@ async fn main() {
             [185, 107, 90, 38].into(),
             443,
         );
+        let addr2 = std::net::SocketAddr::new(
+            // use localhost as
+            [185, 107, 90, 38].into(),
+            80,
+        );
 
-        let server = warp::serve(req);
-        server
+        let https_server = warp::serve(req)
             .tls()
             .key_path("/etc/letsencrypt/live/esfokk.nl/privkey.pem")
             .cert_path("/etc/letsencrypt/live/esfokk.nl/fullchain.pem")
-            .run(addr1)
-            .await;
+            .bind(addr1);
+        let redirect = warp::filters::path::full().map(|path: warp::path::FullPath| {
+            warp::redirect(
+                format!("https://esfokk.nl{}", path.as_str())
+                    .parse::<warp::http::Uri>()
+                    .unwrap_or(warp::http::Uri::from_static("https://esfokk.nl")),
+            )
+        });
+        let http_server = warp::serve(redirect).bind(addr2);
+        tokio::spawn(https_server);
+        http_server.await;
     }
 }
 
