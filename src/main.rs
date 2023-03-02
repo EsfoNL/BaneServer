@@ -52,6 +52,11 @@ async fn main() {
         .and(warp::header("name"))
         .then(api::register);
 
+    let api_v0_query_name = warp::path("query_name")
+        .and(state::add_default(state.clone()))
+        .and(warp::header("name"))
+        .then(api::query_name);
+
     // version 0 of the api
     let api_v0 = warp::path("api")
         .and(warp::path("v0"))
@@ -59,7 +64,8 @@ async fn main() {
             api_v0_poll_messages
                 .or(api_v0_ws)
                 .or(api_v0_login)
-                .or(api_v0_register),
+                .or(api_v0_register)
+                .or(api_v0_query_name),
         )
         .boxed();
 

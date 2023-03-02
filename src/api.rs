@@ -11,7 +11,7 @@ pub async fn poll_messages(state: Arc<State>, token: String, id: Id) -> impl Rep
     warp::reply()
 }
 
-pub async fn query_person(state: Arc<State>, name: String) -> impl Reply {
+pub async fn query_name(state: Arc<State>, name: String) -> impl Reply {
     let mut split_name = name.split('#');
     let name = split_name.next().unwrap();
     let num: u16 = split_name.next().unwrap().parse().unwrap();
