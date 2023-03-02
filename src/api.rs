@@ -1,17 +1,33 @@
-use argon2::{password_hash::Output, PasswordHasher};
-use chrono::NaiveDate;
-use rand::{
-    distributions::{Alphanumeric, DistString, Standard},
-    prelude::Distribution,
-    RngCore,
-};
-use sqlx::{mysql::MySqlConnectOptions, Connection, Executor, MySqlConnection, Row};
+use argon2::PasswordHasher;
+
+use rand::distributions::{Alphanumeric, DistString};
+use sqlx::{Executor, Row};
 use warp::{filters::BoxedFilter, Filter, Reply};
 
 use crate::prelude::*;
-use serde_json::{json, Serializer};
+use serde_json::json;
 
-pub async fn poll_messages(state: Arc<State>, id: Id, token: String) {}
+pub async fn poll_messages(state: Arc<State>, token: String, id: Id) -> impl Reply {
+    warp::reply()
+}
+
+pub async fn query_person(state: Arc<State>, name: String) -> impl Reply {
+    let mut split_name = name.split('#');
+    let name = split_name.next().unwrap();
+    let num: u16 = split_name.next().unwrap().parse().unwrap();
+    let id = state
+        .db
+        .fetch_one(sqlx::query!(
+            "select id from ACCOUNTS where name = ? and num = ?",
+            name,
+            num
+        ))
+        .await
+        .unwrap();
+    warp::http::Response::builder()
+        .status(200)
+        .body(id.get::<u64, _>(0).to_string())
+}
 
 pub async fn login(state: Arc<State>, email: String, password: String) -> impl Reply {
     let query = state
