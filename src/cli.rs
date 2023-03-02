@@ -25,4 +25,7 @@ pub struct Cli {
 
     #[arg(long)]
     pub sqlusername: Option<String>,
+
+    #[arg(long)]
+    pub static_dir: Option<String>,
 }

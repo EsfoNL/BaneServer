@@ -1,3 +1,5 @@
+use std::ops::DerefMut;
+
 use clap::Parser;
 
 use warp::http::Response;
@@ -9,6 +11,7 @@ mod db;
 mod message;
 mod prelude;
 mod state;
+mod webpages;
 mod websocket;
 use prelude::*;
 
@@ -16,33 +19,37 @@ use prelude::*;
 async fn main() {
     let args = cli::Cli::parse();
     let state = Arc::new(State::new(args).await);
-    let ok = warp::path::end().then(ok);
+    let ok = warp::path::end()
+        .and(state::add_default(state.clone()))
+        .then(webpages::root);
+
+    tokio::spawn(signal_handler(state.clone()));
 
     // websocket connection for when user is in app.
     let api_v0_ws = warp::path("ws")
         .and(filters::ws::ws())
         .and(state::add_default(state.clone()))
-        .and(state::add_token_id())
+        .and(api::add_token_id())
         .then(websocket::handler)
         .boxed();
 
     let api_v0_poll_messages = warp::path("poll_messages")
         .and(state::add_default(state.clone()))
-        .and(state::add_token_id())
+        .and(api::add_token_id())
         .map(|_state, _token, _id| warp::reply())
         .boxed();
 
     let api_v0_login = warp::path("login")
         .and(state::add_default(state.clone()))
-        .and(warp::header("Email"))
-        .and(warp::header("Password"))
+        .and(warp::header("email"))
+        .and(warp::header("password"))
         .then(api::login);
 
     let api_v0_register = warp::path("register")
         .and(state::add_default(state.clone()))
-        .and(warp::header("Email"))
-        .and(warp::header("Password"))
-        .and(warp::header("Name"))
+        .and(warp::header("email"))
+        .and(warp::header("password"))
+        .and(warp::header("name"))
         .then(api::register);
 
     // version 0 of the api
@@ -52,10 +59,17 @@ async fn main() {
             api_v0_poll_messages
                 .or(api_v0_ws)
                 .or(api_v0_login)
-                .or(api_v0_register)
-                .or(ok),
+                .or(api_v0_register),
         )
         .boxed();
+
+    let static_path = warp::path("static").and(warp::fs::dir(
+        state
+            .args
+            .static_dir
+            .clone()
+            .unwrap_or(String::from("/www/static")),
+    ));
 
     // create adrress from command line arguments
     let addr = std::net::SocketAddr::new(
@@ -75,6 +89,7 @@ async fn main() {
     );
     let req = warp::get().and(
         ok.or(api_v0)
+            .or(static_path)
             .or(warp::any().map(|| Response::builder().status(404).body(String::from("404")))),
     );
 
@@ -110,14 +125,18 @@ async fn main() {
     }
 }
 
-async fn ok() -> impl warp::Reply {
-    use maud::*;
-    warp::http::Response::builder().body(
-        html! {
-            h1 {
-                "hello world!"
+async fn signal_handler(state: Arc<State>) {
+    let mut stream = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::io()).unwrap();
+    while stream.recv().await.is_some() {
+        let mut lock = state.tera.write().await;
+        match lock.deref_mut() {
+            Some(e) => {
+                e.full_reload();
+            }
+            None => {
+                *lock = tera::Tera::new("templates/**").map_or(None, |e| Some(e));
             }
         }
-        .into_string(),
-    )
+        drop(lock)
+    }
 }

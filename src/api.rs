@@ -6,7 +6,7 @@ use rand::{
     RngCore,
 };
 use sqlx::{mysql::MySqlConnectOptions, Connection, Executor, MySqlConnection, Row};
-use warp::Reply;
+use warp::{filters::BoxedFilter, Filter, Reply};
 
 use crate::prelude::*;
 use serde_json::{json, Serializer};
@@ -52,7 +52,6 @@ pub async fn login(state: Arc<State>, email: String, password: String) -> impl R
 
 /// (Token, RefreshToken)
 async fn generate_tokens(id: Id, db: &Db) -> Result<(String, String), ()> {
-    println!("hello world!");
     // remove old tokens
     db.execute(sqlx::query!("delete from TOKENS where id = ?", id))
         .await
@@ -234,4 +233,11 @@ pub async fn validate_token(token: &String, id: Id, db: &Db) -> Result<(), ()> {
 pub type Time = chrono::DateTime<chrono::Local>;
 pub fn time() -> Time {
     chrono::Local::now()
+}
+
+pub fn add_token_id() -> BoxedFilter<(String, u64)> {
+    warp::filters::any::any()
+        .and(warp::header("token"))
+        .and(warp::header("id"))
+        .boxed()
 }
