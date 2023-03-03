@@ -11,11 +11,35 @@ pub async fn poll_messages(state: Arc<State>, token: String, id: Id) -> impl Rep
     warp::reply()
 }
 
+pub async fn query_id(state: Arc<State>, id: Id) -> impl Reply {
+    state
+        .db
+        .fetch_one(sqlx::query!(
+            "select name, num from ACCOUNTS where id = ?",
+            id
+        ))
+        .await
+        .map_or(warp::http::StatusCode::NOT_FOUND.into_response(), |e| {
+            warp::http::Response::builder()
+                .status(200)
+                .body(
+                    json!({
+                        "name": e.get::<String, _>("name"),
+                        "num": e.get::<u16, _>("num")
+                    })
+                    .to_string(),
+                )
+                .map_or(warp::http::StatusCode::NOT_FOUND.into_response(), |e| {
+                    e.into_response()
+                })
+        })
+}
+
 pub async fn query_name(state: Arc<State>, name: String) -> impl Reply {
     let mut split_name = name.split('#');
     let name = split_name.next().unwrap();
     let num: u16 = split_name.next().unwrap().parse().unwrap();
-    let id = state
+    return state
         .db
         .fetch_one(sqlx::query!(
             "select id from ACCOUNTS where name = ? and num = ?",
@@ -23,10 +47,14 @@ pub async fn query_name(state: Arc<State>, name: String) -> impl Reply {
             num
         ))
         .await
-        .unwrap();
-    warp::http::Response::builder()
-        .status(200)
-        .body(id.get::<u64, _>(0).to_string())
+        .map_or(warp::http::StatusCode::NOT_FOUND.into_response(), |e| {
+            warp::http::Response::builder()
+                .status(200)
+                .body(e.get::<u64, _>(0).to_string())
+                .map_or(warp::http::StatusCode::NOT_FOUND.into_response(), |e| {
+                    e.into_response()
+                })
+        });
 }
 
 pub async fn login(state: Arc<State>, email: String, password: String) -> impl Reply {
