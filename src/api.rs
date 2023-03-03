@@ -8,7 +8,36 @@ use crate::prelude::*;
 use serde_json::json;
 
 pub async fn poll_messages(state: Arc<State>, token: String, id: Id) -> impl Reply {
-    warp::reply()
+    if validate_token(&token, id, &state.db).await.is_err() {
+        return warp::http::StatusCode::UNAUTHORIZED.into_response();
+    }
+    state
+        .db
+        .fetch_all(sqlx::query!(
+            "delete from MESSAGES where reciever = ? returning *",
+            id
+        ))
+        .await
+        .map_or(
+            warp::http::StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+            |e| {
+                let message_json = serde_json::Value::Array(
+                    e.into_iter()
+                        .map(|e| {
+                            serde_json::to_value(RecvMessage::Message {
+                                sender: e.get("sender"),
+                                message: e.get("message"),
+                            })
+                            .unwrap_or(serde_json::Value::Null)
+                        })
+                        .collect(),
+                );
+                warp::http::Response::builder()
+                    .status(200)
+                    .body(message_json.to_string())
+                    .into_response()
+            },
+        )
 }
 
 pub async fn query_id(state: Arc<State>, id: Id) -> impl Reply {

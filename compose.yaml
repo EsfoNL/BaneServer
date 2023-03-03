@@ -1,6 +1,6 @@
 services:
   mysql:
-    image: mysql
+    image: mariadb
     command: mysqld --general-log=1
     volumes:
       - sql-db:/var/lib/mysql
