@@ -29,7 +29,7 @@ CREATE TABLE `ACCOUNTS` (
   `salt` char(32) DEFAULT NULL,
   `name` varchar(255) DEFAULT NULL,
   `num` smallint unsigned DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+);
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -58,7 +58,7 @@ CREATE TABLE `MESSAGES` (
   `reciever` bigint unsigned DEFAULT NULL,
   `message` varchar(255) DEFAULT NULL,
   `queuepos` smallint unsigned DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+);
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -89,7 +89,7 @@ CREATE TABLE `REFRESH_TOKENS` (
   `refresh_token_hash` varchar(86) DEFAULT NULL,
   `salt` char(32) DEFAULT NULL,
   `refresh_token_expiry` timestamp NULL DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+);
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -117,7 +117,7 @@ CREATE TABLE `TOKENS` (
   `token_hash` varchar(86) DEFAULT NULL,
   `salt` char(32) DEFAULT NULL,
   `token_expiry` timestamp NULL DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+);
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --

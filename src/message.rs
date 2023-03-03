@@ -13,5 +13,4 @@ pub enum RecvMessage {
 #[serde(tag = "type")]
 pub enum SendMessage {
     Message { message: String, reciever: Id },
-    ImageMessage { sender: Id },
 }

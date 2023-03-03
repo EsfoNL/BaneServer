@@ -67,7 +67,6 @@ async fn handle_request(
                     store_message_db(message, id, reciever, &state.db).await
                 }
             }
-            SendMessage::ImageMessage { sender } => todo!(),
         }
     }
 }
