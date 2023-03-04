@@ -12,5 +12,5 @@ pub enum RecvMessage {
 #[derive(Deserialize)]
 #[serde(tag = "type")]
 pub enum SendMessage {
-    Message { message: String, reciever: Id },
+    Message { message: String, receiver: Id },
 }
