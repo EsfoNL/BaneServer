@@ -53,7 +53,10 @@ async fn handle_request(
     if let Ok(text) = mesg.to_str() {
         let parsed_message: SendMessage = serde_json::from_str(text).unwrap();
         match parsed_message {
-            SendMessage::Message { message, reciever } => {
+            SendMessage::Message {
+                message,
+                receiver: reciever,
+            } => {
                 if let Some(mut conn) = state.subscribers.get_mut(&reciever) {
                     if let Err(error) = conn.value_mut().try_send(RecvMessage::Message {
                         sender: id,
