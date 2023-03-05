@@ -64,6 +64,7 @@ async fn main() {
 
     let api_v0_refresh_token = warp::path("refresh")
         .and(state::add_default(state.clone()))
+        .and(warp::header("id"))
         .and(warp::header("refresh_token"))
         .then(api::refresh_token);
 
