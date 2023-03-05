@@ -62,6 +62,11 @@ async fn main() {
         .and(warp::header("id"))
         .then(api::query_id);
 
+    let api_v0_refresh_token = warp::path("refresh")
+        .and(state::add_default(state.clone()))
+        .and(warp::header("refresh_token"))
+        .then(api::refresh_token);
+
     // version 0 of the api
     let api_v0 = warp::path("api")
         .and(warp::path("v0"))
@@ -71,7 +76,8 @@ async fn main() {
                 .or(api_v0_login)
                 .or(api_v0_register)
                 .or(api_v0_query_name)
-                .or(api_v0_query_id),
+                .or(api_v0_query_id)
+                .or(api_v0_refresh_token),
         )
         .boxed();
 
