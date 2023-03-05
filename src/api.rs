@@ -317,34 +317,35 @@ pub fn add_token_id() -> BoxedFilter<(String, u64)> {
 
 pub async fn refresh_token(state: Arc<State>, id: Id, refresh_token: String) -> impl Reply {
     let mut trans = state.db.begin().await.unwrap();
-    let res = trans
+    if let Ok(res) = trans
         .fetch_one(sqlx::query!(
             "select * from REFRESH_TOKENS where id = ?",
             id,
         ))
         .await
-        .unwrap();
-    let hash = hash_data(&refresh_token, &res.get("salt"));
-    if res.get::<Time, _>("refresh_token_expiry") < time()
-        && hash == res.get::<String, _>("refresh_token_hash")
     {
-        trans
-            .execute(sqlx::query!("delete from REFRESH_TOKENS where id = ?", id))
-            .await;
-        trans
-            .execute(sqlx::query!("delete from TOKENS where id = ?", id))
-            .await;
-        trans.commit().await;
-        let (token, new_refresh_token) = generate_tokens(id, &state.db).await.unwrap();
-        return warp::http::Response::builder()
-            .body(
-                json!({
-                    "token": token,
-                    "refresh_token": new_refresh_token
-                })
-                .to_string(),
-            )
-            .into_response();
+        let hash = hash_data(&refresh_token, &res.get("salt"));
+        if res.get::<Time, _>("refresh_token_expiry") < time()
+            && hash == res.get::<String, _>("refresh_token_hash")
+        {
+            trans
+                .execute(sqlx::query!("delete from REFRESH_TOKENS where id = ?", id))
+                .await;
+            trans
+                .execute(sqlx::query!("delete from TOKENS where id = ?", id))
+                .await;
+            trans.commit().await;
+            let (token, new_refresh_token) = generate_tokens(id, &state.db).await.unwrap();
+            return warp::http::Response::builder()
+                .body(
+                    json!({
+                        "token": token,
+                        "refresh_token": new_refresh_token
+                    })
+                    .to_string(),
+                )
+                .into_response();
+        }
     }
     return warp::http::StatusCode::UNAUTHORIZED.into_response();
 }
