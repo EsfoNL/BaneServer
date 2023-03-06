@@ -27,12 +27,7 @@ pub async fn poll_messages(state: Arc<State>, token: String, id: Id) -> impl Rep
             id
         ))
         .await;
-    trans
-        .execute(sqlx::query!("delete from MESSAGES where reciever = ?", id))
-        .await
-        .unwrap();
-    trans.commit().await.unwrap();
-    messages.map_or(
+    let res = messages.map_or(
         warp::http::StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         |e| {
             let message_json = serde_json::Value::Array(
@@ -51,7 +46,14 @@ pub async fn poll_messages(state: Arc<State>, token: String, id: Id) -> impl Rep
                 .body(message_json.to_string())
                 .into_response()
         },
-    )
+    );
+
+    trans
+        .execute(sqlx::query!("delete from MESSAGES where reciever = ?", id))
+        .await
+        .unwrap();
+    trans.commit().await.unwrap();
+    res
 }
 
 pub async fn query_id(state: Arc<State>, id: Id) -> impl Reply {
