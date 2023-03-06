@@ -59,13 +59,16 @@ async fn handle_request(
                 receiver: reciever,
             } => {
                 if let Some(mut conn) = state.subscribers.get_mut(&reciever) {
-                    if let Err(error) = conn.value_mut().try_send(RecvMessage::Message {
-                        sender: id,
-                        message,
-                    }) {
-                        if let RecvMessage::Message { sender, message } = error.into_inner() {
-                            store_message_db(message, id, reciever, &state.db).await
-                        }
+                    if conn.is_closed() {
+                        store_message_db(message, id, reciever, &state.db).await;
+                    } else {
+                        drop(
+                            conn.send(RecvMessage::Message {
+                                message,
+                                sender: id,
+                            })
+                            .await,
+                        );
                     }
                 } else {
                     store_message_db(message, id, reciever, &state.db).await
