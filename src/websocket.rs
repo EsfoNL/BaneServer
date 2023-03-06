@@ -50,6 +50,12 @@ async fn websocket_handler(ws: WebSocket, state: Arc<State>, id: Id) {
                 {
                     state.subscribers.remove(&id);
                     combined_stream.into_inner().1.into_inner().close();
+                    match v {
+                        RecvMessage::Message { sender, message } => {
+                            store_message_db(message, sender, id, &state.db).await;
+                        }
+                        _ => (),
+                    }
                     eprintln!("websocket closed {id}");
                     return ();
                 }
