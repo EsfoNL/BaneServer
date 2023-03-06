@@ -35,18 +35,12 @@ async fn websocket_handler(ws: WebSocket, state: Arc<State>, id: Id) {
         match value {
             Either::Left(v) => {
                 if v.is_err() {
-                    state
-                        .subscribers
-                        .remove_if(&id, |_, b| b.same_receiver(&sender));
+                    state.subscribers.remove(&id);
                     combined_stream.into_inner().1.into_inner().close();
+                    eprintln!("websocket closed {id}");
                     return ();
                 }
-                tokio::spawn(handle_request(
-                    sender.clone(),
-                    v.unwrap(),
-                    id,
-                    state.clone(),
-                ));
+                tokio::spawn(handle_request(v.unwrap(), id, state.clone()));
             }
             Either::Right(v) => {
                 ws_sender
@@ -57,12 +51,7 @@ async fn websocket_handler(ws: WebSocket, state: Arc<State>, id: Id) {
     }
 }
 
-async fn handle_request(
-    ws: futures::channel::mpsc::Sender<RecvMessage>,
-    mesg: Message,
-    id: Id,
-    state: Arc<State>,
-) {
+async fn handle_request(mesg: Message, id: Id, state: Arc<State>) {
     if let Ok(text) = mesg.to_str() {
         let parsed_message: SendMessage = serde_json::from_str(text).unwrap();
         match parsed_message {
@@ -74,6 +63,7 @@ async fn handle_request(
                     if conn.is_closed() {
                         store_message_db(message, id, reciever, &state.db).await;
                     } else {
+                        eprintln!("sent through ws: {message}, {id}");
                         drop(
                             conn.send(RecvMessage::Message {
                                 message,
@@ -91,6 +81,7 @@ async fn handle_request(
 }
 
 async fn store_message_db(message: String, sender: Id, reciever: Id, db: &Db) {
+    eprintln!("send to db {message}, {sender}, {reciever}");
     let mut trans = db.begin().await.unwrap();
     let queue_position_req = trans
         .fetch_optional(sqlx::query!(
