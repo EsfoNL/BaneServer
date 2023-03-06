@@ -350,12 +350,14 @@ pub async fn refresh_token(state: Arc<State>, id: Id, refresh_token: String) -> 
         if hash == res.get::<String, _>("refresh_token_hash") {
             trans
                 .execute(sqlx::query!("delete from REFRESH_TOKENS where id = ?", id))
-                .await;
+                .await
+                .unwrap();
             trans
                 .execute(sqlx::query!("delete from TOKENS where id = ?", id))
-                .await;
-            trans.commit().await;
-            if res.get::<Time, _>("refresh_token_expiry") < time() {
+                .await
+                .unwrap();
+            trans.commit().await.unwrap();
+            if res.get::<Time, _>("refresh_token_expiry") > time() {
                 let (token, new_refresh_token) = generate_tokens(id, &state.db).await.unwrap();
                 return warp::http::Response::builder()
                     .body(
