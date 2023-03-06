@@ -33,11 +33,13 @@ pub async fn poll_messages(state: Arc<State>, token: String, id: Id) -> impl Rep
             let message_json = serde_json::Value::Array(
                 e.into_iter()
                     .map(|e| {
-                        serde_json::to_value(RecvMessage::Message {
+                        let val = serde_json::to_value(RecvMessage::Message {
                             sender: e.get("sender"),
                             message: e.get("message"),
                         })
-                        .unwrap_or(serde_json::Value::Null)
+                        .unwrap_or(serde_json::Value::Null);
+                        eprintln!("{}", val.to_string());
+                        val
                     })
                     .collect(),
             );
