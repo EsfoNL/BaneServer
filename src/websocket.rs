@@ -8,11 +8,12 @@ use warp::ws::{Message, WebSocket};
 use warp::Reply;
 
 pub async fn handler(websocket: Ws, state: Arc<State>, token: String, id: Id) -> impl warp::Reply {
-    if crate::api::validate_token(&token, id, &state.db)
-        .await
-        .is_err()
-    {
-        return warp::http::StatusCode::BAD_REQUEST.into_response();
+    if let Err(e) = crate::api::validate_token(&token, id, &state.db).await {
+        return match e {
+            crate::api::TokenError::Expired => warp::http::StatusCode::GONE,
+            crate::api::TokenError::Else => warp::http::StatusCode::UNAUTHORIZED,
+        }
+        .into_response();
     }
 
     return websocket

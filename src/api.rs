@@ -7,6 +7,11 @@ use warp::{filters::BoxedFilter, Filter, Reply};
 use crate::prelude::*;
 use serde_json::json;
 
+pub enum TokenError {
+    Expired,
+    Else,
+}
+
 pub async fn poll_messages(state: Arc<State>, token: String, id: Id) -> impl Reply {
     if validate_token(&token, id, &state.db).await.is_err() {
         return warp::http::StatusCode::UNAUTHORIZED.into_response();
@@ -276,14 +281,14 @@ pub async fn register(
         .body("registration succesfull")
 }
 
-pub async fn validate_token(token: &String, id: Id, db: &Db) -> Result<(), ()> {
+pub async fn validate_token(token: &String, id: Id, db: &Db) -> Result<(), TokenError> {
     let data = db
         .fetch_one(sqlx::query!(
             "select token_hash, salt, token_expiry from TOKENS where id = ?",
             id
         ))
         .await
-        .map_err(|_| ())?;
+        .map_err(|_| TokenError::Else)?;
     let hash = hash_data(token, &data.get("salt"));
     if hash != data.get::<String, _>("token_hash") {
         println!(
@@ -291,7 +296,7 @@ pub async fn validate_token(token: &String, id: Id, db: &Db) -> Result<(), ()> {
             data.get::<String, _>("token_hash"),
             hash
         );
-        return Err(());
+        return Err(TokenError::Else);
     }
     if data.get::<Time, _>("token_expiry") > time() {
         Ok(())
@@ -299,7 +304,7 @@ pub async fn validate_token(token: &String, id: Id, db: &Db) -> Result<(), ()> {
         db.execute(sqlx::query!("delete from TOKENS where id = ?", id))
             .await
             .unwrap();
-        Err(())
+        Err(TokenError::Expired)
     }
 }
 
@@ -325,26 +330,28 @@ pub async fn refresh_token(state: Arc<State>, id: Id, refresh_token: String) -> 
         .await
     {
         let hash = hash_data(&refresh_token, &res.get("salt"));
-        if res.get::<Time, _>("refresh_token_expiry") < time()
-            && hash == res.get::<String, _>("refresh_token_hash")
-        {
-            trans
-                .execute(sqlx::query!("delete from REFRESH_TOKENS where id = ?", id))
-                .await;
-            trans
-                .execute(sqlx::query!("delete from TOKENS where id = ?", id))
-                .await;
-            trans.commit().await;
-            let (token, new_refresh_token) = generate_tokens(id, &state.db).await.unwrap();
-            return warp::http::Response::builder()
-                .body(
-                    json!({
-                        "token": token,
-                        "refresh_token": new_refresh_token
-                    })
-                    .to_string(),
-                )
-                .into_response();
+        if hash == res.get::<String, _>("refresh_token_hash") {
+            if res.get::<Time, _>("refresh_token_expiry") < time() {
+                trans
+                    .execute(sqlx::query!("delete from REFRESH_TOKENS where id = ?", id))
+                    .await;
+                trans
+                    .execute(sqlx::query!("delete from TOKENS where id = ?", id))
+                    .await;
+                trans.commit().await;
+                let (token, new_refresh_token) = generate_tokens(id, &state.db).await.unwrap();
+                return warp::http::Response::builder()
+                    .body(
+                        json!({
+                            "token": token,
+                            "refresh_token": new_refresh_token
+                        })
+                        .to_string(),
+                    )
+                    .into_response();
+            } else {
+                return warp::http::StatusCode::GONE.into_response();
+            }
         }
     }
     return warp::http::StatusCode::UNAUTHORIZED.into_response();
