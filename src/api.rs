@@ -20,33 +20,38 @@ pub async fn poll_messages(state: Arc<State>, token: String, id: Id) -> impl Rep
         }
         .into_response();
     }
-    state
-        .db
+    let mut trans = state.db.begin().await.unwrap();
+    let messages = trans
         .fetch_all(sqlx::query!(
-            "delete from MESSAGES where reciever = ? returning *",
+            "select * from MESSAGES where reciever = ? order by queuepos",
             id
         ))
+        .await;
+    trans
+        .execute(sqlx::query!("delete from MESSAGES where reciever = ?", id))
         .await
-        .map_or(
-            warp::http::StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-            |e| {
-                let message_json = serde_json::Value::Array(
-                    e.into_iter()
-                        .map(|e| {
-                            serde_json::to_value(RecvMessage::Message {
-                                sender: e.get("sender"),
-                                message: e.get("message"),
-                            })
-                            .unwrap_or(serde_json::Value::Null)
+        .unwrap();
+    trans.commit().await.unwrap();
+    messages.map_or(
+        warp::http::StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        |e| {
+            let message_json = serde_json::Value::Array(
+                e.into_iter()
+                    .map(|e| {
+                        serde_json::to_value(RecvMessage::Message {
+                            sender: e.get("sender"),
+                            message: e.get("message"),
                         })
-                        .collect(),
-                );
-                warp::http::Response::builder()
-                    .status(200)
-                    .body(message_json.to_string())
-                    .into_response()
-            },
-        )
+                        .unwrap_or(serde_json::Value::Null)
+                    })
+                    .collect(),
+            );
+            warp::http::Response::builder()
+                .status(200)
+                .body(message_json.to_string())
+                .into_response()
+        },
+    )
 }
 
 pub async fn query_id(state: Arc<State>, id: Id) -> impl Reply {
