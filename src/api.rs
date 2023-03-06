@@ -282,29 +282,45 @@ pub async fn register(
 }
 
 pub async fn validate_token(token: &String, id: Id, db: &Db) -> Result<(), TokenError> {
-    let data = db
-        .fetch_one(sqlx::query!(
+    let optional_data = db
+        .fetch_optional(sqlx::query!(
             "select token_hash, salt, token_expiry from TOKENS where id = ?",
             id
         ))
         .await
         .map_err(|_| TokenError::Else)?;
-    let hash = hash_data(token, &data.get("salt"));
-    if hash != data.get::<String, _>("token_hash") {
-        println!(
-            "actual_token: {}, token: {}",
-            data.get::<String, _>("token_hash"),
-            hash
-        );
-        return Err(TokenError::Else);
-    }
-    if data.get::<Time, _>("token_expiry") > time() {
-        Ok(())
+    if let Some(data) = optional_data {
+        let hash = hash_data(token, &data.get("salt"));
+        if hash != data.get::<String, _>("token_hash") {
+            println!(
+                "actual_token: {}, token: {}",
+                data.get::<String, _>("token_hash"),
+                hash
+            );
+            return Err(TokenError::Else);
+        }
+        if data.get::<Time, _>("token_expiry") > time() {
+            Ok(())
+        } else {
+            db.execute(sqlx::query!("delete from TOKENS where id = ?", id))
+                .await
+                .unwrap();
+            Err(TokenError::Expired)
+        }
     } else {
-        db.execute(sqlx::query!("delete from TOKENS where id = ?", id))
+        if db
+            .fetch_optional(sqlx::query!(
+                "select * from REFRESH_TOKENS where id = ?",
+                id
+            ))
             .await
-            .unwrap();
-        Err(TokenError::Expired)
+            .map_err(|_| TokenError::Else)?
+            .is_some()
+        {
+            Err(TokenError::Expired)
+        } else {
+            Err(TokenError::Else)
+        }
     }
 }
 
