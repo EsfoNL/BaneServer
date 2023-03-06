@@ -27,14 +27,26 @@ async fn websocket_handler(ws: WebSocket, state: Arc<State>, id: Id) {
     let (mut ws_sender, ws_reciever) = ws.split();
 
     let mut combined_stream = futures::stream::select(
-        ws_reciever.map(|e| Either::Left(e.unwrap())),
+        ws_reciever.map(|e| Either::Left(e)),
         reciever.map(|e| Either::Right(e)),
     );
 
     while let Some(value) = combined_stream.next().await {
         match value {
             Either::Left(v) => {
-                tokio::spawn(handle_request(sender.clone(), v, id, state.clone()));
+                if v.is_err() {
+                    state
+                        .subscribers
+                        .remove_if(&id, |_, b| b.same_receiver(&sender));
+                    combined_stream.into_inner().1.into_inner().close();
+                    return ();
+                }
+                tokio::spawn(handle_request(
+                    sender.clone(),
+                    v.unwrap(),
+                    id,
+                    state.clone(),
+                ));
             }
             Either::Right(v) => {
                 ws_sender
