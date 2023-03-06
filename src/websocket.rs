@@ -43,9 +43,16 @@ async fn websocket_handler(ws: WebSocket, state: Arc<State>, id: Id) {
                 tokio::spawn(handle_request(v.unwrap(), id, state.clone()));
             }
             Either::Right(v) => {
-                ws_sender
+                if ws_sender
                     .send(warp::ws::Message::text(serde_json::to_string(&v).unwrap()))
-                    .await;
+                    .await
+                    .is_err()
+                {
+                    state.subscribers.remove(&id);
+                    combined_stream.into_inner().1.into_inner().close();
+                    eprintln!("websocket closed {id}");
+                    return ();
+                }
             }
         }
     }
