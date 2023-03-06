@@ -13,8 +13,12 @@ pub enum TokenError {
 }
 
 pub async fn poll_messages(state: Arc<State>, token: String, id: Id) -> impl Reply {
-    if validate_token(&token, id, &state.db).await.is_err() {
-        return warp::http::StatusCode::UNAUTHORIZED.into_response();
+    if let Err(e) = validate_token(&token, id, &state.db).await {
+        return match e {
+            TokenError::Else => warp::http::StatusCode::UNAUTHORIZED,
+            TokenError::Expired => warp::http::StatusCode::GONE,
+        }
+        .into_response();
     }
     state
         .db
