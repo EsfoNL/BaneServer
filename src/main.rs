@@ -82,13 +82,13 @@ async fn main() {
         )
         .boxed();
 
-    let static_path = warp::path("static").and(warp::fs::dir(
+    let static_path = warp::fs::dir(
         state
             .args
             .static_dir
             .clone()
-            .unwrap_or(String::from("/www/static")),
-    ));
+            .unwrap_or(String::from("/www")),
+    );
 
     // create adrress from command line arguments
     let addr = std::net::SocketAddr::new(
@@ -108,7 +108,7 @@ async fn main() {
     );
     let req = warp::get().and(
         ok.or(api_v0)
-            .or(static_path)
+            .or(static_path.clone())
             .or(warp::any().map(|| Response::builder().status(404).body(String::from("404")))),
     );
 
@@ -138,7 +138,7 @@ async fn main() {
                     .unwrap_or(warp::http::Uri::from_static("https://esfokk.nl")),
             )
         });
-        let http_server = warp::serve(redirect).bind(addr2);
+        let http_server = warp::serve(static_path.or(redirect)).bind(addr2);
         tokio::spawn(https_server);
         http_server.await;
     }
