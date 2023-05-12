@@ -52,6 +52,5 @@ pub fn shell_command(args: &HashMap<String, tera::Value>) -> Result<tera::Value,
 
 fn to_json_or_string(string: &str) -> serde_json::Value {
     let value = serde_json::from_str(string).unwrap_or(serde_json::json!(string));
-    eprintln!("{value:?}");
     value
 }
