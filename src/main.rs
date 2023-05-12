@@ -154,7 +154,7 @@ async fn main() {
 fn signal_handler(state: Arc<State>) -> impl Watcher {
     let mut watcher = notify::recommended_watcher(move |res| {
         if let Ok(_) = res {
-            let _ = state.tera.blocking_write().full_reload();
+            eprintln!("{:?}", state.tera.blocking_write().full_reload());
         }
     })
     .unwrap();
