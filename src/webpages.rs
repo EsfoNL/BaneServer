@@ -6,7 +6,9 @@ use warp::{path::FullPath, Rejection};
 pub async fn handler(path: FullPath, state: Arc<State>) -> Result<String, &'static str> {
     let lock = state.tera.read().await;
     let path = path.as_str();
-    eprintln!("{path}");
+    if state.args.verbose {
+        eprintln!("{path}");
+    }
     if path == "/" || path == "" {
         return lock
             .render("root.html", &state.context)
@@ -14,7 +16,9 @@ pub async fn handler(path: FullPath, state: Arc<State>) -> Result<String, &'stat
             .ok_or("root render failed");
     }
     lock.render(&path[1..], &state.context).map_err(|e| {
-        eprintln!("terra error: {e:?}");
+        if state.args.verbose {
+            eprintln!("terra error: {e:?}");
+        }
         "tera error"
     })
 }
