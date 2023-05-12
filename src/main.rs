@@ -2,8 +2,10 @@ use std::ops::DerefMut;
 
 use clap::Parser;
 
+use futures::{FutureExt, TryFutureExt};
+use notify::Watcher;
 use warp::http::Response;
-use warp::{filters, Filter};
+use warp::{filters, Filter, Reply};
 
 mod api;
 mod cli;
@@ -19,11 +21,16 @@ use prelude::*;
 async fn main() {
     let args = cli::Cli::parse();
     let state = Arc::new(State::new(args).await);
-    let ok = warp::path::end()
+    let base = warp::path::full()
         .and(state::add_default(state.clone()))
-        .then(webpages::root);
+        .and_then(|path: warp::path::FullPath, state: Arc<State>| {
+            webpages::handler(path, state).then(|e| async {
+                e.map(|e| Response::new(e))
+                    .map_err(|_| warp::reject::not_found())
+            })
+        });
 
-    tokio::spawn(signal_handler(state.clone()));
+    *state.watcher.lock().unwrap() = Some(Box::new(signal_handler(state.clone())));
 
     // websocket connection for when user is in app.
     let api_v0_ws = warp::path("ws")
@@ -107,7 +114,7 @@ async fn main() {
             .unwrap(),
     );
     let req = warp::get().and(
-        ok.or(api_v0)
+        base.or(api_v0)
             .or(static_path.clone())
             .or(warp::any().map(|| Response::builder().status(404).body(String::from("404")))),
     );
@@ -144,18 +151,16 @@ async fn main() {
     }
 }
 
-async fn signal_handler(state: Arc<State>) {
-    let mut stream = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::io()).unwrap();
-    while stream.recv().await.is_some() {
-        let mut lock = state.tera.write().await;
-        match lock.deref_mut() {
-            Some(e) => {
-                e.full_reload();
-            }
-            None => {
-                *lock = tera::Tera::new("templates/**").map_or(None, |e| Some(e));
-            }
+fn signal_handler(state: Arc<State>) -> impl Watcher {
+    let mut watcher = notify::recommended_watcher(move |res| {
+        if let Ok(_) = res {
+            let _ = state.tera.blocking_write().full_reload();
         }
-        drop(lock)
-    }
+    })
+    .unwrap();
+    watcher.watch(
+        std::path::Path::new("templates"),
+        notify::RecursiveMode::Recursive,
+    );
+    watcher
 }

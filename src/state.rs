@@ -11,19 +11,29 @@ pub struct State {
     pub db: Db,
     pub args: Cli,
     pub subscribers: dashmap::DashMap<Id, Sender<RecvMessage>>,
-    pub tera: RwLock<Option<Tera>>,
+    pub tera: RwLock<Tera>,
+    pub context: tera::Context,
+    pub watcher: std::sync::Mutex<Option<Box<dyn notify::Watcher + Send + Sync>>>,
 }
 
 impl State {
     pub async fn new(args: Cli) -> Self {
         let db = crate::db::configure(&args).await;
         let subscribers = dashmap::DashMap::new();
-        let tera = Tera::new("templates/**").map_or(None, |e| Some(e));
+        let mut tera = Tera::new("templates/**").unwrap();
+        tera.register_function("command", crate::webpages::command);
+        for i in tera.get_template_names() {
+            eprintln!("template: {i}")
+        }
+        let context = tera::Context::new();
+
         State {
             db,
             args,
             subscribers,
             tera: RwLock::new(tera),
+            context,
+            watcher: None.into(),
         }
     }
 }
