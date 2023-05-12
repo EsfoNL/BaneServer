@@ -22,6 +22,7 @@ impl State {
         let subscribers = dashmap::DashMap::new();
         let mut tera = Tera::new("templates/**").unwrap();
         tera.register_function("command", crate::webpages::command);
+        tera.register_function("sh", crate::webpages::shell_command);
         for i in tera.get_template_names() {
             eprintln!("template: {i}")
         }

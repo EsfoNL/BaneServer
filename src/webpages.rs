@@ -38,3 +38,10 @@ pub fn command(args: &HashMap<String, tera::Value>) -> Result<tera::Value, tera:
     let handle = command.output()?;
     serde_json::from_slice(handle.stdout.as_slice()).map_err(|e| e.into())
 }
+
+pub fn shell_command(args: &HashMap<String, tera::Value>) -> Result<tera::Value, tera::Error> {
+    let mut command = std::process::Command::new("sh");
+    command.arg("-c");
+    command.arg(args.get("command").unwrap().as_str().unwrap());
+    serde_json::from_slice(command.output().unwrap().stdout.as_slice()).map_err(|e| e.into())
+}
