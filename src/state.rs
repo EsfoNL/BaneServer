@@ -1,7 +1,6 @@
 use crate::prelude::*;
 
 use futures::channel::mpsc::Sender;
-use sqlx::{Executor, Row};
 use std::sync::Arc;
 use tera::Tera;
 use tokio::sync::RwLock;
@@ -20,11 +19,13 @@ impl State {
     pub async fn new(args: Cli) -> Self {
         let db = crate::db::configure(&args).await;
         let subscribers = dashmap::DashMap::new();
-        let mut tera = Tera::new("templates/**").unwrap();
+        let mut tera = Tera::new(&format!("{}/**", &args.template_dir)).unwrap();
         tera.register_function("command", crate::webpages::command);
         tera.register_function("sh", crate::webpages::shell_command);
-        for i in tera.get_template_names() {
-            eprintln!("template: {i}")
+        if args.verbose {
+            for i in tera.get_template_names() {
+                eprintln!("template: {i}")
+            }
         }
         let context = tera::Context::new();
 

@@ -1,4 +1,5 @@
 use std::ops::DerefMut;
+use std::str::FromStr;
 
 use clap::Parser;
 
@@ -88,31 +89,9 @@ async fn main() {
                 .or(api_v0_refresh_token),
         )
         .boxed();
-
-    let static_path = warp::fs::dir(
-        state
-            .args
-            .static_dir
-            .clone()
-            .unwrap_or(String::from("/www")),
-    );
+    let static_path = warp::fs::dir(state.args.static_dir.clone());
 
     // create adrress from command line arguments
-    let addr = std::net::SocketAddr::new(
-        // use localhost as
-        state
-            .args
-            .server_host
-            .clone()
-            .unwrap_or(std::net::Ipv4Addr::new(127, 0, 0, 1).into()),
-        state
-            .args
-            .port
-            .clone()
-            .unwrap_or(String::from("80"))
-            .parse()
-            .unwrap(),
-    );
     let req = warp::get().and(
         base.or(api_v0)
             .or(static_path.clone())
@@ -120,46 +99,52 @@ async fn main() {
     );
 
     if cfg!(debug_assertions) {
+        let addr = std::net::SocketAddr::new(
+            // use localhost as
+            std::net::Ipv4Addr::new(127, 0, 0, 1).into(),
+            state.args.http_port,
+        );
         warp::serve(req).run(addr).await;
     } else {
-        let addr1 = std::net::SocketAddr::new(
+        let http = std::net::SocketAddr::new(
             // use localhost as
-            [185, 107, 90, 38].into(),
-            443,
+            state.args.server_host.clone(),
+            state.args.http_port.clone(),
         );
-        let addr2 = std::net::SocketAddr::new(
+        let https = std::net::SocketAddr::new(
             // use localhost as
-            [185, 107, 90, 38].into(),
-            80,
+            state.args.server_host.clone(),
+            state.args.https_port.clone(),
         );
 
         let https_server = warp::serve(req)
             .tls()
-            .key_path("/etc/letsencrypt/live/esfokk.nl/privkey.pem")
-            .cert_path("/etc/letsencrypt/live/esfokk.nl/fullchain.pem")
-            .bind(addr1);
+            .key_path(state.args.ssl_key.clone())
+            .cert_path(state.args.ssl_certificate.clone())
+            .bind(https);
         let redirect = warp::filters::path::full().map(|path: warp::path::FullPath| {
             warp::redirect(
-                format!("https://esfokk.nl{}", path.as_str())
-                    .parse::<warp::http::Uri>()
-                    .unwrap_or(warp::http::Uri::from_static("https://esfokk.nl")),
+                warp::http::Uri::from_str(path.as_str().replace("http", "https").as_str()).unwrap(),
             )
         });
-        let http_server = warp::serve(static_path.or(redirect)).bind(addr2);
+        let http_server = warp::serve(static_path.or(redirect)).bind(http);
         tokio::spawn(https_server);
         http_server.await;
     }
 }
 
 fn signal_handler(state: Arc<State>) -> impl Watcher {
-    let mut watcher = notify::recommended_watcher(move |res| {
-        if let Ok(_) = res {
-            eprintln!("{:?}", state.tera.blocking_write().full_reload());
-        }
-    })
-    .unwrap();
-    watcher.watch(
-        std::path::Path::new("templates"),
+    let mut watcher = {
+        let state = state.clone();
+        notify::recommended_watcher(move |res| {
+            if let Ok(_) = res {
+                eprintln!("{:?}", state.tera.blocking_write().full_reload());
+            }
+        })
+        .unwrap()
+    };
+    let _ = watcher.watch(
+        std::path::Path::new(&state.args.template_dir),
         notify::RecursiveMode::Recursive,
     );
     watcher
