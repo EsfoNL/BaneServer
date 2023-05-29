@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 argon2 = "0.4.1"
-chrono = "0.4.23"
+chrono = "0.4.25"
 clap = { version = "4.0.32", features = ["derive"] }
 dashmap = "5.4.0"
 either = "1.8.1"
