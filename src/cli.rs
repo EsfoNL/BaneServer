@@ -5,7 +5,7 @@ pub struct Cli {
     #[arg(long, default_value_t = 80)]
     pub http_port: u16,
 
-    #[arg(long, default_value_t = 80)]
+    #[arg(long, default_value_t = 443)]
     pub https_port: u16,
 
     #[arg(long, default_value_t = [0, 0, 0, 0].into())]
