@@ -33,6 +33,9 @@ async fn main() {
 
     *state.watcher.lock().unwrap() = Some(Box::new(signal_handler(state.clone())));
 
+    if state.args.tokio_console {
+        console_subscriber::init();
+    }
     // websocket connection for when user is in app.
     let api_v0_ws = warp::path("ws")
         .and(filters::ws::ws())
@@ -89,6 +92,7 @@ async fn main() {
                 .or(api_v0_refresh_token),
         )
         .boxed();
+
     let static_path = warp::fs::dir(state.args.static_dir.clone());
 
     // create adrress from command line arguments
@@ -98,7 +102,7 @@ async fn main() {
             .or(warp::any().map(|| Response::builder().status(404).body(String::from("404")))),
     );
 
-    if cfg!(debug_assertions) {
+    if state.args.dev {
         let addr = std::net::SocketAddr::new(
             // use localhost as
             std::net::Ipv4Addr::new(127, 0, 0, 1).into(),

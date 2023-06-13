@@ -39,4 +39,13 @@ pub struct Cli {
     pub ssl_certificate: String,
     #[arg(long, default_value_t = String::from("/etc/letsencrypt/live/esfokk.nl/privkey.pem"))]
     pub ssl_key: String,
+
+    #[arg(long, default_value_t = String::from("/php"))]
+    pub php_root: String,
+
+    #[arg(long)]
+    pub dev: bool,
+
+    #[arg(long)]
+    pub tokio_console: bool,
 }

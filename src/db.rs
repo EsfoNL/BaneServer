@@ -4,7 +4,7 @@ use sqlx::{mysql::MySqlConnectOptions, ConnectOptions, Connection, Executor, Que
 use warp::http;
 
 pub async fn configure(args: &Cli) -> Db {
-    if cfg!(debug_assertions) {
+    if args.dev {
         let options: MySqlConnectOptions = MySqlConnectOptions::new()
             .host(args.sqlserver.as_ref().map_or("127.0.0.1", |e| &e))
             .password(args.sqlpassword.as_ref().map_or("root", |e| e.as_str()))

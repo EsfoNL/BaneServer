@@ -2,3 +2,6 @@
 .env
 /static
 /templates/**
+perf.data
+perf.data.old
+flamegraph.svg
