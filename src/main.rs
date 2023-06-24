@@ -128,7 +128,8 @@ async fn main() {
             .bind(https);
         let redirect = warp::filters::path::full().map(|path: warp::path::FullPath| {
             warp::redirect(
-                warp::http::Uri::from_str(path.as_str().replace("http", "https").as_str()).unwrap(),
+                warp::http::Uri::from_str(&("https://esfokk.nl".to_owned() + path.as_str()))
+                    .unwrap(),
             )
         });
         let http_server = warp::serve(static_path.or(redirect)).bind(http);
