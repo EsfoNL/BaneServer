@@ -1,14 +1,14 @@
 use crate::prelude::*;
 use either::Either;
-use futures::{Sink, Stream};
 use futures::{SinkExt, StreamExt};
 use sqlx::{Executor, Row};
+use warp::reply::Response;
 use warp::ws::Ws;
 use warp::ws::{Message, WebSocket};
 use warp::Reply;
 
-pub async fn handler(websocket: Ws, state: Arc<State>, token: String, id: Id) -> impl warp::Reply {
-    if let Err(e) = crate::api::validate_token(&token, id, &state.db).await {
+pub async fn handler(websocket: Ws, state: Arc<State>, token: String, id: Id) -> Response {
+    if let Err(e) = crate::api::validate_token(&token, id, &state).await {
         return match e {
             crate::api::TokenError::Expired => warp::http::StatusCode::GONE,
             crate::api::TokenError::Else => warp::http::StatusCode::UNAUTHORIZED,
@@ -51,8 +51,8 @@ async fn websocket_handler(ws: WebSocket, state: Arc<State>, id: Id) {
                     state.subscribers.remove(&id);
                     combined_stream.into_inner().1.into_inner().close();
                     match v {
-                        RecvMessage::Message { sender, message } => {
-                            store_message_db(message, sender, id, &state.db).await;
+                        crate::message::Message::Message { target, message } => {
+                            store_message_db(message, target, id, &state.db).await;
                         }
                         _ => (),
                     }
@@ -66,11 +66,11 @@ async fn websocket_handler(ws: WebSocket, state: Arc<State>, id: Id) {
 
 async fn handle_request(mesg: Message, id: Id, state: Arc<State>) {
     if let Ok(text) = mesg.to_str() {
-        let parsed_message: SendMessage = serde_json::from_str(text).unwrap();
+        let parsed_message: crate::message::Message = serde_json::from_str(text).unwrap();
         match parsed_message {
-            SendMessage::Message {
+            crate::message::Message::Message {
                 message,
-                receiver: reciever,
+                target: reciever,
             } => {
                 if let Some(mut conn) = state.subscribers.get_mut(&reciever) {
                     if conn.is_closed() {
@@ -78,9 +78,9 @@ async fn handle_request(mesg: Message, id: Id, state: Arc<State>) {
                     } else {
                         eprintln!("sent through ws: {message}, {id}");
                         drop(
-                            conn.send(RecvMessage::Message {
+                            conn.send(crate::message::Message::Message {
                                 message,
-                                sender: id,
+                                target: id,
                             })
                             .await,
                         );
@@ -89,6 +89,10 @@ async fn handle_request(mesg: Message, id: Id, state: Arc<State>) {
                     store_message_db(message, id, reciever, &state.db).await
                 }
             }
+            e => unimplemented!(
+                "not implemented for message: {}",
+                serde_json::to_string_pretty(&e).unwrap()
+            ),
         }
     }
 }

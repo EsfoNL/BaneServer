@@ -13,7 +13,7 @@ pub enum TokenError {
 }
 
 pub async fn poll_messages(state: Arc<State>, token: String, id: Id) -> impl Reply {
-    if let Err(e) = validate_token(&token, id, &state.db).await {
+    if let Err(e) = validate_token(&token, id, &state).await {
         return match e {
             TokenError::Else => warp::http::StatusCode::UNAUTHORIZED,
             TokenError::Expired => warp::http::StatusCode::GONE,
@@ -33,8 +33,8 @@ pub async fn poll_messages(state: Arc<State>, token: String, id: Id) -> impl Rep
             let message_json = serde_json::Value::Array(
                 e.into_iter()
                     .map(|e| {
-                        let val = serde_json::to_value(RecvMessage::Message {
-                            sender: e.get("sender"),
+                        let val = serde_json::to_value(Message::Message {
+                            target: e.get("sender"),
                             message: e.get("message"),
                         })
                         .unwrap_or(serde_json::Value::Null);
@@ -294,8 +294,12 @@ pub async fn register(
         .body("registration succesfull")
 }
 
-pub async fn validate_token(token: &String, id: Id, db: &Db) -> Result<(), TokenError> {
-    let optional_data = db
+pub async fn validate_token(token: &String, id: Id, state: &Arc<State>) -> Result<(), TokenError> {
+    if state.args.dev {
+        return Ok(());
+    }
+    let optional_data = state
+        .db
         .fetch_optional(sqlx::query!(
             "select token_hash, salt, token_expiry from TOKENS where id = ?",
             id
@@ -315,13 +319,16 @@ pub async fn validate_token(token: &String, id: Id, db: &Db) -> Result<(), Token
         if data.get::<Time, _>("token_expiry") > time() {
             Ok(())
         } else {
-            db.execute(sqlx::query!("delete from TOKENS where id = ?", id))
+            state
+                .db
+                .execute(sqlx::query!("delete from TOKENS where id = ?", id))
                 .await
                 .unwrap();
             Err(TokenError::Expired)
         }
     } else {
-        if db
+        if state
+            .db
             .fetch_optional(sqlx::query!(
                 "select * from REFRESH_TOKENS where id = ?",
                 id

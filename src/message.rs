@@ -2,15 +2,25 @@ use serde::{Deserialize, Serialize};
 
 use crate::prelude::*;
 
-#[derive(Serialize)]
-#[serde(tag = "type")]
-pub enum RecvMessage {
-    Message { sender: Id, message: String },
-    ImageMessage { sender: Id, url: String },
-}
+const FILEPART_SIZE: u64 = 1024 * 1024;
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(tag = "type")]
-pub enum SendMessage {
-    Message { message: String, receiver: Id },
+pub enum Message {
+    Message {
+        target: Id,
+        message: String,
+    },
+    File {
+        target: Id,
+        filename: String,
+        size: u64,
+    },
+    FilePart {
+        target: Id,
+        filename: String,
+        part: u64,
+        hash: String,
+        data: String,
+    },
 }

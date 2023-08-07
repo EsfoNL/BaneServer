@@ -1,12 +1,9 @@
-use std::ops::DerefMut;
-use std::str::FromStr;
-
 use clap::Parser;
-
-use futures::{FutureExt, TryFutureExt};
+use futures::FutureExt;
 use notify::Watcher;
+use std::str::FromStr;
 use warp::http::Response;
-use warp::{filters, Filter, Reply};
+use warp::{filters, Filter};
 
 mod api;
 mod cli;

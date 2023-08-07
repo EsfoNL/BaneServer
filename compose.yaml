@@ -1,7 +1,7 @@
 services:
   mysql:
     image: mariadb
-    command: mysqld --general-log=1
+    command: mariadbd
     volumes:
       - sql-db:/var/lib/mysql
     environment:

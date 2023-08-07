@@ -17,11 +17,11 @@ pub struct Cli {
     #[arg(long)]
     pub files: Option<String>,
 
-    #[arg(long)]
-    pub sqlserver: Option<String>,
+    #[arg(long, default_value_t = String::from("127.0.0.1"))]
+    pub sqlhost: String,
 
-    #[arg(long)]
-    pub sqlport: Option<u16>,
+    #[arg(long, default_value_t = 3306)]
+    pub sqlport: u16,
 
     #[arg(long)]
     pub sqlpassword: Option<String>,
@@ -44,6 +44,7 @@ pub struct Cli {
     pub php_root: String,
 
     #[arg(long)]
+    /// enable dev mode
     pub dev: bool,
 
     #[arg(long)]

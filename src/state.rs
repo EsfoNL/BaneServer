@@ -9,7 +9,7 @@ use warp::{filters::BoxedFilter, Filter};
 pub struct State {
     pub db: Db,
     pub args: Cli,
-    pub subscribers: dashmap::DashMap<Id, Sender<RecvMessage>>,
+    pub subscribers: dashmap::DashMap<Id, Sender<Message>>,
     pub tera: RwLock<Tera>,
     pub context: tera::Context,
     pub watcher: std::sync::Mutex<Option<Box<dyn notify::Watcher + Send + Sync>>>,

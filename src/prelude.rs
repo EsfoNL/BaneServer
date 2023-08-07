@@ -8,4 +8,4 @@ pub const TOKEN_LENGTH: usize = 32;
 pub const MAX_HASH_LENGTH: usize = argon2::Params::DEFAULT_OUTPUT_LEN;
 pub const SALT_LENGTH: usize = 32;
 pub const CHANNEL_BOUND: usize = 16;
-pub use crate::message::{RecvMessage, SendMessage};
+pub use crate::message::Message;
