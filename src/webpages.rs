@@ -71,6 +71,7 @@ pub async fn gitea_handler(
     body: Bytes,
     state: Arc<State>,
 ) -> Result<warp::http::Response<Bytes>, Rejection> {
+    println!("body: {}", String::from_utf8_lossy(&body));
     let mut url = reqwest::Url::parse("http://127.0.0.1").unwrap();
     url.set_path(path.as_str());
     url.set_port(Some(state.args.gitea_port)).unwrap();
