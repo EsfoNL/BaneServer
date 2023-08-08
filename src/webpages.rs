@@ -74,6 +74,7 @@ pub async fn gitea_handler(
     let mut url = reqwest::Url::parse("http://127.0.0.1").unwrap();
     url.set_path(path.as_str());
     url.set_port(Some(state.args.gitea_port)).unwrap();
+    println!("url: {url:#?}");
     let req = state
         .reqwest_client
         .request(method, url)
@@ -81,6 +82,7 @@ pub async fn gitea_handler(
         .body(body)
         .build()
         .map_err(|_| warp::reject())?;
+    println!("req: {req:#?}");
     let res = state
         .reqwest_client
         .execute(req)
@@ -88,8 +90,10 @@ pub async fn gitea_handler(
         .map_err(|_| warp::reject())?;
     let res_headers = res.headers().clone();
     let res_status = res.status();
+    println!("res: {res:#?}");
     let mut actual_res = warp::http::Response::new(res.bytes().await.map_err(|_| warp::reject())?);
     *actual_res.headers_mut() = res_headers;
     *actual_res.status_mut() = res_status;
+    println!("ac_res: {actual_res:#?}");
     Ok(actual_res)
 }
