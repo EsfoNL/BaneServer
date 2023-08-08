@@ -81,6 +81,7 @@ pub async fn gitea_handler(
         .request(method, url)
         .headers(headers)
         .body(body)
+        .version(Version::HTTP_2)
         .build()
         .map_err(|_| warp::reject())?;
     println!("req: {req:#?}");
