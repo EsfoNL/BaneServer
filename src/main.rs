@@ -4,6 +4,7 @@ use notify::Watcher;
 use std::str::FromStr;
 use warp::http::Response;
 use warp::{filters, Filter};
+use webpages::gitea_handler;
 
 mod api;
 mod cli;
@@ -91,15 +92,22 @@ async fn main() {
         .boxed();
 
     let static_path = warp::fs::dir(state.args.static_dir.clone());
-
+    let gitea = warp::path("gitea")
+        .and(warp::path::tail())
+        .and(warp::method())
+        .and(warp::header::headers_cloned())
+        .and(warp::body::bytes())
+        .and(state::add_default(state.clone()))
+        .and_then(gitea_handler);
     // create adrress from command line arguments
-    let req = warp::get().and(
+    let req = gitea.or(warp::get().and(
         base.or(api_v0)
             .or(static_path.clone())
             .or(warp::any().map(|| Response::builder().status(404).body(String::from("404")))),
-    );
+    ));
 
     if state.args.dev {
+        println!("running dev mode!");
         let addr = std::net::SocketAddr::new(
             // use localhost as
             std::net::Ipv4Addr::new(127, 0, 0, 1).into(),

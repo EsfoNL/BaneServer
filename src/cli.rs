@@ -49,4 +49,7 @@ pub struct Cli {
 
     #[arg(long)]
     pub tokio_console: bool,
+
+    #[arg(long, default_value_t = 3000)]
+    pub gitea_port: u16,
 }

@@ -1,6 +1,7 @@
 use crate::prelude::*;
 
 use futures::channel::mpsc::Sender;
+use reqwest::Client;
 use std::sync::Arc;
 use tera::Tera;
 use tokio::sync::RwLock;
@@ -9,6 +10,7 @@ use warp::{filters::BoxedFilter, Filter};
 pub struct State {
     pub db: Db,
     pub args: Cli,
+    pub reqwest_client: Client,
     pub subscribers: dashmap::DashMap<Id, Sender<Message>>,
     pub tera: RwLock<Tera>,
     pub context: tera::Context,
@@ -36,6 +38,7 @@ impl State {
             tera: RwLock::new(tera),
             context,
             watcher: None.into(),
+            reqwest_client: Client::new(),
         }
     }
 }

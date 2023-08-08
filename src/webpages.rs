@@ -1,7 +1,12 @@
-use crate::state::State;
+use crate::state::{self, State};
+use reqwest::{header::HeaderMap, Method, RequestBuilder, Response, Version};
 use std::{collections::HashMap, sync::Arc};
 use tera::{Context, Tera};
-use warp::{path::FullPath, Rejection};
+use warp::{
+    hyper::{body::Bytes, Request},
+    path::{FullPath, Tail},
+    Rejection, Reply,
+};
 
 pub async fn handler(path: FullPath, state: Arc<State>) -> Result<String, &'static str> {
     let lock = state.tera.read().await;
@@ -57,4 +62,34 @@ pub fn shell_command(args: &HashMap<String, tera::Value>) -> Result<tera::Value,
 fn to_json_or_string(string: &str) -> serde_json::Value {
     let value = serde_json::from_str(string).unwrap_or(serde_json::json!(string));
     value
+}
+
+pub async fn gitea_handler(
+    path: Tail,
+    method: Method,
+    headers: HeaderMap,
+    body: Bytes,
+    state: Arc<State>,
+) -> Result<warp::http::Response<Bytes>, Rejection> {
+    let mut url = reqwest::Url::parse("http://127.0.0.1").unwrap();
+    url.set_path(path.as_str());
+    url.set_port(Some(state.args.gitea_port)).unwrap();
+    let req = state
+        .reqwest_client
+        .request(method, url)
+        .headers(headers)
+        .body(body)
+        .build()
+        .map_err(|_| warp::reject())?;
+    let res = state
+        .reqwest_client
+        .execute(req)
+        .await
+        .map_err(|_| warp::reject())?;
+    let res_headers = res.headers().clone();
+    let res_status = res.status();
+    let mut actual_res = warp::http::Response::new(res.bytes().await.map_err(|_| warp::reject())?);
+    *actual_res.headers_mut() = res_headers;
+    *actual_res.status_mut() = res_status;
+    Ok(actual_res)
 }
