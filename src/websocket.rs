@@ -37,7 +37,7 @@ async fn websocket_handler(ws: WebSocket, state: Arc<State>, id: Id) {
                 if v.is_err() {
                     state.subscribers.remove(&id);
                     combined_stream.into_inner().1.into_inner().close();
-                    eprintln!("websocket closed {id}");
+                    info!("websocket closed: {}");
                     return ();
                 }
                 tokio::spawn(handle_request(v.unwrap(), id, state.clone()));
@@ -56,7 +56,7 @@ async fn websocket_handler(ws: WebSocket, state: Arc<State>, id: Id) {
                         }
                         _ => (),
                     }
-                    eprintln!("websocket closed {id}");
+                    info!("websocket closed: {id}");
                     return ();
                 }
             }

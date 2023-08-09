@@ -1,6 +1,6 @@
 use clap::Parser;
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 pub struct Cli {
     #[arg(long, default_value_t = 80)]
     pub http_port: u16,
@@ -52,4 +52,7 @@ pub struct Cli {
 
     #[arg(long, default_value_t = 3000)]
     pub gitea_port: u16,
+
+    #[arg(long, default_value_t = tracing::Level::WARN)]
+    pub log_level: tracing::Level,
 }

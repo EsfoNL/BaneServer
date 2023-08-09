@@ -1,31 +1,44 @@
 use crate::state::{self, State};
-use reqwest::{header::HeaderMap, Method, RequestBuilder, Response, Version};
+use async_trait::async_trait;
+use axum::{
+    body::Bytes,
+    extract::{FromRequest, Path},
+    response::Html,
+};
+use futures::StreamExt;
+use http::Uri;
+use reqwest::{header::HeaderMap, Method, Request, RequestBuilder, Response, Version};
 use std::{collections::HashMap, sync::Arc};
 use tera::{Context, Tera};
-use warp::{
-    hyper::{body::Bytes, Request},
-    path::{FullPath, Tail},
-    Rejection, Reply,
-};
+use tracing::{debug, info, instrument, warn};
 
-pub async fn handler(path: FullPath, state: Arc<State>) -> Result<String, &'static str> {
-    let lock = state.tera.read().await;
-    let path = path.as_str();
-    if state.args.verbose {
-        eprintln!("{path}");
+pub async fn handler(
+    Path(path): Path<String>,
+    axum::extract::State(state): axum::extract::State<Arc<State>>,
+) -> Result<Html<String>, &'static str> {
+    if let Some(ref lock) = *state.tera.read().await {
+        Ok(Html(lock.render(&path[1..], &state.context).map_err(
+            |e| {
+                if state.args.verbose {
+                    eprintln!("terra error: {e:?}");
+                }
+                "tera error"
+            },
+        )?))
+    } else {
+        Err("tera not loaded")
     }
-    if path == "/" || path == "" {
-        return lock
-            .render("root.html", &state.context)
+}
+pub async fn root_handler(
+    axum::extract::State(state): axum::extract::State<Arc<State>>,
+) -> Result<Html<String>, &'static str> {
+    Ok(Html(if let Some(ref tera) = *state.tera.read().await {
+        tera.render("root.html", &state.context)
             .ok()
-            .ok_or("root render failed");
-    }
-    lock.render(&path[1..], &state.context).map_err(|e| {
-        if state.args.verbose {
-            eprintln!("terra error: {e:?}");
-        }
-        "tera error"
-    })
+            .ok_or("root render failed")?
+    } else {
+        return Err("terra not loaded");
+    }))
 }
 
 pub fn command(args: &HashMap<String, tera::Value>) -> Result<tera::Value, tera::Error> {
@@ -64,38 +77,50 @@ fn to_json_or_string(string: &str) -> serde_json::Value {
     value
 }
 
+#[instrument(skip(state))]
 pub async fn gitea_handler(
-    path: Tail,
-    method: Method,
-    headers: HeaderMap,
-    body: Bytes,
-    state: Arc<State>,
-) -> Result<warp::http::Response<Bytes>, Rejection> {
-    println!("body: {}", String::from_utf8_lossy(&body));
-    let mut url = reqwest::Url::parse("http://127.0.0.1").unwrap();
-    url.set_path(path.as_str());
-    url.set_port(Some(state.args.gitea_port)).unwrap();
-    println!("url: {url:#?}");
-    let req = state
+    axum::extract::State(state): axum::extract::State<Arc<State>>,
+    RequestExtractor(request): RequestExtractor,
+) -> Result<
+    http::Response<
+        axum::body::StreamBody<impl futures::Stream<Item = Result<Bytes, reqwest::Error>>>,
+    >,
+    (),
+> {
+    // http::Request != reqwest::Request
+    let mut url = reqwest::Url::parse("http://127.0.0.1:3000").unwrap();
+    let path = request.uri().path_and_query().ok_or(())?.as_str()["/gitea".len()..].to_owned();
+    debug!("{} -> {path}", request.uri());
+    url.set_path(&path);
+    let mut new_request = Request::new(request.method().clone(), url);
+    *new_request.headers_mut() = request.headers().to_owned();
+    *new_request.body_mut() = Some(request.into_body().into());
+    let e = state
         .reqwest_client
-        .request(method, url)
-        .headers(headers)
-        .body(body)
-        .version(Version::HTTP_2)
-        .build()
-        .map_err(|_| warp::reject())?;
-    println!("req: {req:#?}");
-    let res = state
-        .reqwest_client
-        .execute(req)
+        .execute(new_request)
         .await
-        .map_err(|_| warp::reject())?;
-    let res_headers = res.headers().clone();
-    let res_status = res.status();
-    println!("res: {res:#?}");
-    let mut actual_res = warp::http::Response::new(res.bytes().await.map_err(|_| warp::reject())?);
-    *actual_res.headers_mut() = res_headers;
-    *actual_res.status_mut() = res_status;
-    println!("ac_res: {actual_res:#?}");
+        .map_err(|e| {
+            warn!("{}", e);
+        })?;
+    let headers = e.headers().to_owned();
+    let status = e.status().to_owned();
+    let mut actual_res =
+        axum::response::Response::new(axum::body::StreamBody::new(e.bytes_stream()));
+    *actual_res.headers_mut() = headers;
+    *actual_res.status_mut() = status;
     Ok(actual_res)
+}
+
+pub struct RequestExtractor(axum::http::Request<axum::body::Body>);
+
+#[async_trait]
+impl FromRequest<Arc<State>, axum::body::Body> for RequestExtractor {
+    type Rejection = ();
+
+    async fn from_request(
+        req: axum::http::Request<axum::body::Body>,
+        _state: &Arc<State>,
+    ) -> Result<Self, ()> {
+        return Ok(RequestExtractor(req));
+    }
 }

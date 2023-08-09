@@ -2,7 +2,6 @@ use argon2::PasswordHasher;
 
 use rand::distributions::{Alphanumeric, DistString};
 use sqlx::{Executor, Row};
-use warp::{filters::BoxedFilter, Filter, Reply};
 
 use crate::prelude::*;
 use serde_json::json;
@@ -11,7 +10,7 @@ pub enum TokenError {
     Expired,
     Else,
 }
-
+/*
 pub async fn poll_messages(state: Arc<State>, token: String, id: Id) -> impl Reply {
     if let Err(e) = validate_token(&token, id, &state).await {
         return match e {
@@ -395,3 +394,4 @@ pub async fn refresh_token(state: Arc<State>, id: Id, refresh_token: String) -> 
     }
     return warp::http::StatusCode::UNAUTHORIZED.into_response();
 }
+*/

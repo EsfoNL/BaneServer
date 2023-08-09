@@ -1,35 +1,31 @@
+use axum::{
+    routing::{get, MethodFilter, MethodRouter},
+    Router,
+};
 use clap::Parser;
-use futures::FutureExt;
 use notify::Watcher;
-use std::str::FromStr;
-use warp::http::Response;
-use warp::{filters, Filter};
+use tracing::{debug, error, info, Level};
 use webpages::gitea_handler;
 
-mod api;
+//mod api;
 mod cli;
 mod db;
 mod message;
 mod prelude;
 mod state;
 mod webpages;
-mod websocket;
+//mod websocket;
 use prelude::*;
 
 #[tokio::main]
 async fn main() {
     let args = cli::Cli::parse();
+    tracing_subscriber::fmt()
+        .with_max_level(args.log_level)
+        .init();
     let state = Arc::new(State::new(args).await);
-    let base = warp::path::full()
-        .and(state::add_default(state.clone()))
-        .and_then(|path: warp::path::FullPath, state: Arc<State>| {
-            webpages::handler(path, state).then(|e| async {
-                e.map(|e| Response::new(e))
-                    .map_err(|_| warp::reject::not_found())
-            })
-        });
-
-    *state.watcher.lock().unwrap() = Some(Box::new(signal_handler(state.clone())));
+    *state.watcher.write().await = Some(signal_handler(state.clone()));
+    /*
 
     if state.args.tokio_console {
         console_subscriber::init();
@@ -104,16 +100,40 @@ async fn main() {
         base.or(api_v0)
             .or(static_path.clone())
             .or(warp::any().map(|| Response::builder().status(404).body(String::from("404")))),
-    ));
+    ));*/
+    // let base =
+    //     .and(state::add_default(state.clone()))
+    //     .and_then(|path: warp::path::FullPath, state: Arc<State>| {
+    //         webpages::handler(path, state).then(|e| async {
+    //             e.map(|e| Response::new(e))
+    //                 .map_err(|_| warp::reject::not_found())
+    //         })
+    //     });
+    let router: Router<(), axum::body::Body> = Router::new()
+        .route(
+            "/gitea",
+            MethodRouter::new().on(MethodFilter::all(), gitea_handler),
+        )
+        .route(
+            "/gitea/*key",
+            MethodRouter::new().on(MethodFilter::all(), gitea_handler),
+        )
+        .route("/", get(webpages::root_handler))
+        .route("/*path", get(webpages::handler))
+        .with_state(state.clone());
 
     if state.args.dev {
-        println!("running dev mode!");
+        info!("running dev mode!");
         let addr = std::net::SocketAddr::new(
             // use localhost as
             std::net::Ipv4Addr::new(127, 0, 0, 1).into(),
             state.args.http_port,
         );
-        warp::serve(req).run(addr).await;
+        axum::Server::bind(&addr)
+            .serve(router.into_make_service())
+            .await
+            .unwrap();
+        //warp::serve(req).run(addr).await;
     } else {
         let http = std::net::SocketAddr::new(
             // use localhost as
@@ -125,13 +145,13 @@ async fn main() {
             state.args.server_host.clone(),
             state.args.https_port.clone(),
         );
-
+        /*
         let https_server = warp::serve(req)
             .tls()
             .key_path(state.args.ssl_key.clone())
             .cert_path(state.args.ssl_certificate.clone())
             .bind(https);
-        let redirect = warp::filters::path::full().map(|path: warp::path::FullPath| {
+         let redirect = warp::filters::path::full().map(|path: warp::path::FullPath| {
             warp::redirect(
                 warp::http::Uri::from_str(&("https://esfokk.nl".to_owned() + path.as_str()))
                     .unwrap(),
@@ -139,16 +159,23 @@ async fn main() {
         });
         let http_server = warp::serve(static_path.or(redirect)).bind(http);
         tokio::spawn(https_server);
-        http_server.await;
+        http_server.await;*/
     }
 }
 
-fn signal_handler(state: Arc<State>) -> impl Watcher {
+fn signal_handler(state: Arc<State>) -> notify::INotifyWatcher {
     let mut watcher = {
         let state = state.clone();
         notify::recommended_watcher(move |res| {
             if let Ok(_) = res {
-                eprintln!("{:?}", state.tera.blocking_write().full_reload());
+                if let Some(Err(e)) = state
+                    .tera
+                    .blocking_write()
+                    .as_mut()
+                    .map(|e| e.full_reload())
+                {
+                    error!("terra error: {}", e);
+                };
             }
         })
         .unwrap()
