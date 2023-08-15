@@ -14,7 +14,7 @@ use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use notify::Watcher;
 use rustls::ServerConnection;
-use tracing::{debug, error, info, log::debug};
+use tracing::{debug, error, info};
 use webpages::gitea_handler;
 //mod api;
 mod cli;
