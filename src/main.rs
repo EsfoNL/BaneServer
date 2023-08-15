@@ -273,14 +273,15 @@ impl TlsStream {
                         }
                     },
                     Ok(_) = con.writable() => {
-                        rustls_con.lock().await.write_tls(&mut buf).unwrap();
-                        debug!("data written");
-                        tokio::io::AsyncWriteExt::write(&mut con, &buf).await.unwrap();
-                        buf.clear();
-                        for i in write_wakers.iter() {
-                            i.wake_by_ref();
+                        if rustls_con.lock().await.write_tls(&mut buf).unwrap() > 0 {
+                            debug!("data written");
+                            tokio::io::AsyncWriteExt::write(&mut con, &buf).await.unwrap();
+                            buf.clear();
+                            for i in write_wakers.iter() {
+                                i.wake_by_ref();
+                            }
+                            write_wakers.clear();
                         }
-                        write_wakers.clear();
                     },
                     Some(_) = close_recv.recv() => {
                         let _ = tokio::io::AsyncWriteExt::shutdown(&mut con).await;
