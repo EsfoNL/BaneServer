@@ -1,8 +1,7 @@
 use std::{
     io::{Read, Write},
-    marker::PhantomData,
-    net::{SocketAddr, TcpStream},
-    pin::{self, pin},
+    net::SocketAddr,
+    pin,
     task::Poll,
 };
 
@@ -11,14 +10,11 @@ use axum::{
     Router,
 };
 use clap::Parser;
-use futures::{AsyncRead, AsyncReadExt, FutureExt};
-use http::header::CONTENT_SECURITY_POLICY;
-use hyper::server::accept::Accept;
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
+
 use notify::Watcher;
 use rustls::ServerConnection;
-use tokio::{io::Interest, net::TcpListener};
-use tokio_stream::{wrappers::TcpListenerStream, Stream, StreamExt};
-use tracing::{debug, error, info, Level};
+use tracing::{error, info};
 use webpages::gitea_handler;
 //mod api;
 mod cli;
@@ -148,7 +144,7 @@ async fn main() {
             .unwrap();
         //warp::serve(req).run(addr).await;
     } else {
-        let http = std::net::SocketAddr::new(
+        let _http = std::net::SocketAddr::new(
             // use localhost as
             state.args.server_host.clone(),
             state.args.http_port.clone(),
@@ -180,7 +176,7 @@ async fn main() {
                 .0,
         );
         let mut res = Vec::new();
-        stream.read_to_end(&mut res).await;
+        let _ = stream.read_to_end(&mut res).await;
         println!("{}", String::from_utf8_lossy(res.as_slice()));
 
         //let tls_acceptor = TlsAcceptor::new(https, &tls_server_config).await;
@@ -206,69 +202,83 @@ async fn main() {
     }
 }
 
+#[allow(dead_code)]
 struct TlsAcceptor {}
 
+#[allow(dead_code)]
 impl TlsAcceptor {
-    async fn new(socket_addr: SocketAddr, config: &Arc<rustls::ServerConfig>) -> Self {
+    async fn new(_socket_addr: SocketAddr, _config: &Arc<rustls::ServerConfig>) -> Self {
         Self {}
     }
 }
 
 struct TlsStream {
+    close: tokio::sync::mpsc::Sender<()>,
     rustls_con: Arc<tokio::sync::Mutex<ServerConnection>>,
-    task: tokio::task::JoinHandle<()>,
     read_waker_sender: tokio::sync::mpsc::Sender<std::task::Waker>,
     write_waker_sender: tokio::sync::mpsc::Sender<std::task::Waker>,
+}
+
+impl Drop for TlsStream {
+    fn drop(&mut self) {
+        let _ = self.close.try_send(());
+    }
 }
 
 impl TlsStream {
     fn new(config: &Arc<rustls::ServerConfig>, mut con: tokio::net::TcpStream) -> Self {
         let (read_sender, mut read_reciever) = tokio::sync::mpsc::channel(16);
         let (write_sender, mut write_reciever) = tokio::sync::mpsc::channel(16);
+        let (close, mut close_recv) = tokio::sync::mpsc::channel(1);
         let rustls_con = Arc::new(tokio::sync::Mutex::new(
             ServerConnection::new(config.clone()).unwrap(),
         ));
         let sec_con = rustls_con.clone();
-        Self {
-            task: tokio::spawn(async move {
-                let mut read_wakers: Vec<std::task::Waker> = vec![];
-                let mut write_wakers: Vec<std::task::Waker> = vec![];
-                let mut buf = vec![];
-                loop {
-                    tokio::select! {
-                        Some(w) = read_reciever.recv() => {
-                            read_wakers.push(w);
-                        },
-                        Some(v) = write_reciever.recv() => {
-                            write_wakers.push(v);
-                        },
-                        Ok(_) = con.readable() => {
-                            if let Ok(_) = con.try_read_buf(&mut buf) {
-                            rustls_con.lock().await.read_tls(&mut &buf[..]).unwrap();
-                            buf.clear();
-                            rustls_con.lock().await.process_new_packets().unwrap();
-                            if !rustls_con.lock().await.wants_read() {
-                                for i in read_wakers.iter() {
-                                    i.wake_by_ref();
-                                }
-                                read_wakers.clear();
+        tokio::spawn(async move {
+            let mut read_wakers: Vec<std::task::Waker> = vec![];
+            let mut write_wakers: Vec<std::task::Waker> = vec![];
+            let mut buf = vec![];
+            loop {
+                tokio::select! {
+                    Some(w) = read_reciever.recv() => {
+                        read_wakers.push(w);
+                    },
+                    Some(v) = write_reciever.recv() => {
+                        write_wakers.push(v);
+                    },
+                    Ok(_) = con.readable() => {
+                        if let Ok(_) = con.try_read_buf(&mut buf) {
+                        rustls_con.lock().await.read_tls(&mut &buf[..]).unwrap();
+                        buf.clear();
+                        rustls_con.lock().await.process_new_packets().unwrap();
+                        if !rustls_con.lock().await.wants_read() {
+                            for i in read_wakers.iter() {
+                                i.wake_by_ref();
                             }
-                                }
-                        },
-                        Ok(_) = con.writable() => {
-                            rustls_con.lock().await.write_tls(&mut buf).unwrap();
-                            tokio::io::AsyncWriteExt::write(&mut con, &buf).await.unwrap();
-                            buf.clear();
-                            if !rustls_con.lock().await.wants_write() {
-                                for i in write_wakers.iter() {
-                                    i.wake_by_ref();
-                                }
-                                write_wakers.clear();
-                            }
+                            read_wakers.clear();
                         }
+                            }
+                    },
+                    Ok(_) = con.writable() => {
+                        rustls_con.lock().await.write_tls(&mut buf).unwrap();
+                        tokio::io::AsyncWriteExt::write(&mut con, &buf).await.unwrap();
+                        buf.clear();
+                        if !rustls_con.lock().await.wants_write() {
+                            for i in write_wakers.iter() {
+                                i.wake_by_ref();
+                            }
+                            write_wakers.clear();
+                        }
+                    },
+                    Some(_) = close_recv.recv() => {
+                        let _ = tokio::io::AsyncWriteExt::shutdown(&mut con).await;
+                        return ();
                     }
                 }
-            }),
+            }
+        });
+        Self {
+            close,
             rustls_con: sec_con,
             read_waker_sender: read_sender,
             write_waker_sender: write_sender,
@@ -292,6 +302,40 @@ impl AsyncRead for TlsStream {
             Ok(_) => Poll::Pending,
             Err(_) => Poll::Ready(Err(std::io::ErrorKind::ConnectionAborted.into())),
         }
+    }
+}
+
+impl AsyncWrite for TlsStream {
+    fn poll_write(
+        self: pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        let lock = self.rustls_con.try_lock();
+        if let Ok(mut lock) = lock {
+            if !lock.wants_write() {
+                return Poll::Ready(lock.writer().write(buf));
+            }
+        }
+        match self.write_waker_sender.try_send(cx.waker().clone()) {
+            Ok(_) => Poll::Pending,
+            Err(_) => Poll::Ready(Err(std::io::ErrorKind::ConnectionAborted.into())),
+        }
+    }
+
+    fn poll_flush(
+        self: pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_close(
+        self: pin::Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        let _ = self.close.try_send(());
+        Poll::Ready(Ok(()))
     }
 }
 
