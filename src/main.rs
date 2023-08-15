@@ -14,7 +14,7 @@ use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use notify::Watcher;
 use rustls::ServerConnection;
-use tracing::{error, info};
+use tracing::{debug, error, info, log::debug};
 use webpages::gitea_handler;
 //mod api;
 mod cli;
@@ -176,7 +176,7 @@ async fn main() {
                 .0,
         );
         let mut res = Vec::new();
-        let _ = stream.read(&mut res).await;
+        let _ = stream.read_buff(&mut res).await;
         let s = String::from_utf8_lossy(res.as_slice());
         println!("{}", s);
         if s.contains("\r\n\r\n") {}
@@ -245,25 +245,35 @@ impl TlsStream {
                 tokio::select! {
                     Some(w) = read_reciever.recv() => {
                         read_wakers.push(w);
+                        debug!("received read waker: {:#?}", w);
                     },
                     Some(v) = write_reciever.recv() => {
                         write_wakers.push(v);
+                        debug!("received  write waker: {:#?}", v);
                     },
                     Ok(_) = con.readable() => {
                         if let Ok(_) = con.try_read_buf(&mut buf) {
-                        rustls_con.lock().await.read_tls(&mut &buf[..]).unwrap();
-                        buf.clear();
-                        rustls_con.lock().await.process_new_packets().unwrap();
-                        if !rustls_con.lock().await.wants_read() {
-                            for i in read_wakers.iter() {
-                                i.wake_by_ref();
+                            debug!("data read");
+                            rustls_con.lock().await.read_tls(&mut &buf[..]).unwrap();
+                            buf.clear();
+                            rustls_con.lock().await.process_new_packets().unwrap();
+                            if !rustls_con.lock().await.wants_read() {
+                                for i in read_wakers.iter() {
+                                    i.wake_by_ref();
+                                }
+                                read_wakers.clear();
+                                debug!("read wakers cleared");
+                            } else {
+                                rustls_con.lock().await.write_tls(&mut buf).unwrap();
+                                debug!("data written");
+                                tokio::io::AsyncWriteExt::write(&mut con, &buf).await.unwrap();
+                                buf.clear();
                             }
-                            read_wakers.clear();
                         }
-                            }
                     },
                     Ok(_) = con.writable() => {
                         rustls_con.lock().await.write_tls(&mut buf).unwrap();
+                        debug!("data written");
                         tokio::io::AsyncWriteExt::write(&mut con, &buf).await.unwrap();
                         buf.clear();
                         if !rustls_con.lock().await.wants_write() {
