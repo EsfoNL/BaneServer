@@ -245,11 +245,11 @@ impl TlsStream {
                 tokio::select! {
                     Some(w) = read_reciever.recv() => {
                         read_wakers.push(w);
-                        debug!("received read waker: {:#?}", w);
+                        debug!("received read waker");
                     },
                     Some(v) = write_reciever.recv() => {
                         write_wakers.push(v);
-                        debug!("received  write waker: {:#?}", v);
+                        debug!("received  write waker");
                     },
                     Ok(_) = con.readable() => {
                         if let Ok(_) = con.try_read_buf(&mut buf) {
