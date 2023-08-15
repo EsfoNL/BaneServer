@@ -175,16 +175,17 @@ async fn main() {
                 .unwrap()
                 .0,
         );
+        let mut s;
         let mut res = Vec::new();
         loop {
             use tokio::io::AsyncReadExt;
             let _ = res.push(stream.read_u8().await.unwrap_or_default());
-            let s = String::from_utf8_lossy(res.as_slice());
-            println!("{}", s);
+            s = String::from_utf8_lossy(res.as_slice()).to_string();
             if s.contains("\r\n\r\n") {
                 break;
             }
         }
+        println!("{}", s);
         let _ = stream.shutdown().await;
 
         //let tls_acceptor = TlsAcceptor::new(https, &tls_server_config).await;
