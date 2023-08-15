@@ -176,14 +176,10 @@ async fn main() {
                 .0,
         );
         let mut res = Vec::new();
-        loop {
-            let _ = stream.read(&mut res).await;
-            let s = String::from_utf8_lossy(res.as_slice());
-            println!("{}", s);
-            if s.contains("\r\n\r\n") {
-                break;
-            }
-        }
+        let _ = stream.read(&mut res).await;
+        let s = String::from_utf8_lossy(res.as_slice());
+        println!("{}", s);
+        if s.contains("\r\n\r\n") {}
         let _ = stream.close().await;
 
         //let tls_acceptor = TlsAcceptor::new(https, &tls_server_config).await;
