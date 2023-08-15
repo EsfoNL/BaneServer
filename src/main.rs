@@ -176,7 +176,7 @@ async fn main() {
                 .0,
         );
         let mut res = Vec::new();
-        let _ = stream.read_buff(&mut res).await;
+        let _ = stream.read(&mut res).await;
         let s = String::from_utf8_lossy(res.as_slice());
         println!("{}", s);
         if s.contains("\r\n\r\n") {}
