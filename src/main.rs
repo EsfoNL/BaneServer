@@ -5,6 +5,8 @@ use std::{
     task::Poll,
 };
 
+use tower_http::services::ServeDir;
+
 use axum::{
     routing::{get, MethodFilter, MethodRouter},
     Router,
@@ -119,7 +121,7 @@ async fn main() {
     //                 .map_err(|_| warp::reject::not_found())
     //         })
     //     });
-    let router: Router<(), axum::body::Body> = Router::new()
+    let mut router: Router<(), axum::body::Body> = Router::new()
         .route(
             "/gitea",
             MethodRouter::new().on(MethodFilter::all(), gitea_handler),
@@ -131,6 +133,9 @@ async fn main() {
         .route("/", get(webpages::root_handler))
         .route("/*path", get(webpages::handler))
         .with_state(state.clone());
+    if let Some(ref path) = state.args.files {
+        router = router.nest_service("/", ServeDir::new(path))
+    }
 
     if state.args.dev {
         info!("running dev mode!");
