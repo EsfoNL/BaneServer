@@ -12,13 +12,13 @@ use std::{collections::HashMap, sync::Arc};
 use tera::{Context, Tera};
 use tracing::{debug, info, instrument, warn};
 
-#[instrument]
+#[instrument(skip(state))]
 pub async fn handler(
     Path(path): Path<String>,
     axum::extract::State(state): axum::extract::State<Arc<State>>,
 ) -> Result<Html<String>, &'static str> {
     if let Some(ref lock) = *state.tera.read().await {
-        Ok(Html(lock.render(&path[1..], &state.context).map_err(
+        Ok(Html(lock.render(&path[..], &state.context).map_err(
             |e| {
                 warn!("tera error: {}", e);
                 "tera error"
