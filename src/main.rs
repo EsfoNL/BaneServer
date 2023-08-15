@@ -10,7 +10,7 @@ use axum::{
     Router,
 };
 use clap::Parser;
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use notify::Watcher;
 use rustls::ServerConnection;
@@ -177,14 +177,15 @@ async fn main() {
         );
         let mut res = Vec::new();
         loop {
-            let _ = stream.read(&mut res).await;
+            use tokio::io::AsyncReadExt;
+            let _ = res.push(stream.read_u8().await.unwrap_or_default());
             let s = String::from_utf8_lossy(res.as_slice());
             println!("{}", s);
             if s.contains("\r\n\r\n") {
                 break;
             }
         }
-        let _ = stream.close().await;
+        let _ = stream.shutdown().await;
 
         //let tls_acceptor = TlsAcceptor::new(https, &tls_server_config).await;
         // let acceptor =
@@ -300,12 +301,15 @@ impl AsyncRead for TlsStream {
     fn poll_read(
         self: pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
-        buf: &mut [u8],
-    ) -> std::task::Poll<std::io::Result<usize>> {
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<Result<(), std::io::Error>> {
         let lock = self.rustls_con.try_lock();
         if let Ok(mut lock) = lock {
             if !lock.wants_read() {
-                return Poll::Ready(lock.reader().read(buf));
+                return Poll::Ready(lock.reader().read(buf.initialize_unfilled()).map(|n| {
+                    buf.advance(n);
+                    ()
+                }));
             }
         }
         match self.read_waker_sender.try_send(cx.waker().clone()) {
@@ -344,7 +348,7 @@ impl AsyncWrite for TlsStream {
         Poll::Ready(Ok(()))
     }
 
-    fn poll_close(
+    fn poll_shutdown(
         self: pin::Pin<&mut Self>,
         _cx: &mut std::task::Context<'_>,
     ) -> Poll<std::io::Result<()>> {
