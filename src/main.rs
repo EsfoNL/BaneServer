@@ -223,7 +223,7 @@ struct TlsStream {
     close: tokio::sync::mpsc::Sender<()>,
     rustls_con: Arc<tokio::sync::Mutex<ServerConnection>>,
     read_waker_sender: tokio::sync::mpsc::Sender<std::task::Waker>,
-    write_waker_sender: tokio::sync::mpsc::Sender<std::task::Waker>,
+    write_notify: Arc<tokio::sync::Notify>,
 }
 
 impl Drop for TlsStream {
@@ -235,7 +235,8 @@ impl Drop for TlsStream {
 impl TlsStream {
     fn new(config: &Arc<rustls::ServerConfig>, mut con: tokio::net::TcpStream) -> Self {
         let (read_sender, mut read_reciever) = tokio::sync::mpsc::channel(16);
-        let (write_sender, mut write_reciever) = tokio::sync::mpsc::channel(16);
+        let notify = Arc::new(tokio::sync::Notify::new());
+        let n_2 = notify.clone();
         let (close, mut close_recv) = tokio::sync::mpsc::channel(1);
         let rustls_con = Arc::new(tokio::sync::Mutex::new(
             ServerConnection::new(config.clone()).unwrap(),
@@ -250,10 +251,6 @@ impl TlsStream {
                     Some(w) = read_reciever.recv() => {
                         read_wakers.push(w);
                         debug!("received read waker");
-                    },
-                    Some(v) = write_reciever.recv() => {
-                        write_wakers.push(v);
-                        debug!("received  write waker");
                     },
                     Ok(_) = con.readable() => {
                         if let Ok(_) = con.try_read_buf(&mut buf) {
@@ -272,7 +269,7 @@ impl TlsStream {
                             buf.clear();
                         }
                     },
-                    Ok(_) = con.writable() => {
+                    _ = notify.notified() => {
                         if rustls_con.lock().await.write_tls(&mut buf).unwrap() > 0 {
                             debug!("data written");
                             tokio::io::AsyncWriteExt::write(&mut con, &buf).await.unwrap();
@@ -294,7 +291,7 @@ impl TlsStream {
             close,
             rustls_con: sec_con,
             read_waker_sender: read_sender,
-            write_waker_sender: write_sender,
+            write_notify: n_2,
         }
     }
 }
@@ -326,13 +323,17 @@ impl AsyncWrite for TlsStream {
     ) -> Poll<std::io::Result<usize>> {
         let lock = self.rustls_con.try_lock();
         if let Ok(mut lock) = lock {
-            if !lock.wants_write() {
-                return Poll::Ready(lock.writer().write(buf));
-            }
-        }
-        match self.write_waker_sender.try_send(cx.waker().clone()) {
-            Ok(_) => Poll::Pending,
-            Err(_) => Poll::Ready(Err(std::io::ErrorKind::ConnectionAborted.into())),
+            let res = lock.writer().write(buf);
+            self.write_notify.notify_one();
+            return Poll::Ready(res);
+        } else {
+            let lock_2 = self.rustls_con.clone();
+            let waker = cx.waker().clone();
+            tokio::spawn(async move {
+                let _ = lock_2.lock().await;
+                waker.wake();
+            });
+            Poll::Pending
         }
     }
 
