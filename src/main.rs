@@ -281,14 +281,15 @@ impl AsyncRead for TlsStream {
         cx: &mut std::task::Context<'_>,
         buf: &mut [u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
-        let mut lock = self.rustls_con.blocking_lock();
-        if !lock.wants_read() {
-            Poll::Ready(lock.reader().read(buf))
-        } else {
-            match self.read_waker_sender.blocking_send(cx.waker().clone()) {
-                Ok(_) => Poll::Pending,
-                Err(_) => Poll::Ready(Err(std::io::ErrorKind::ConnectionAborted.into())),
+        let lock = self.rustls_con.try_lock();
+        if let Ok(mut lock) = lock {
+            if !lock.wants_read() {
+                return Poll::Ready(lock.reader().read(buf));
             }
+        }
+        match self.read_waker_sender.try_send(cx.waker().clone()) {
+            Ok(_) => Poll::Pending,
+            Err(_) => Poll::Ready(Err(std::io::ErrorKind::ConnectionAborted.into())),
         }
     }
 }
