@@ -176,18 +176,6 @@ async fn main() {
                 .unwrap()
                 .0,
         );
-        let mut s;
-        let mut res = Vec::new();
-        loop {
-            use tokio::io::AsyncReadExt;
-            let _ = res.push(stream.read_u8().await.unwrap_or_default());
-            s = String::from_utf8_lossy(res.as_slice()).to_string();
-            if s.contains("\r\n\r\n") {
-                break;
-            }
-        }
-        println!("{}", s);
-        let _ = stream.shutdown().await;
 
         let tls_acceptor = TlsAcceptor::new(https, &tls_server_config).await;
         hyper::server::Server::builder(tls_acceptor)
@@ -278,11 +266,9 @@ impl TlsStream {
                 tokio::select! {
                     Some(w) = read_reciever.recv() => {
                         read_wakers.push(w);
-                        debug!("received read waker");
                     },
                     Ok(_) = con.readable() => {
                         if let Ok(_) = con.try_read_buf(&mut buf) {
-                            debug!("data read");
                             rustls_con.lock().await.read_tls(&mut &buf[..]).unwrap();
                             buf.clear();
                             rustls_con.lock().await.process_new_packets().unwrap();
@@ -290,7 +276,6 @@ impl TlsStream {
                                 i.wake_by_ref();
                             }
                             read_wakers.clear();
-                            debug!("read wakers cleared");
                             rustls_con.lock().await.write_tls(&mut buf).unwrap();
                             // debug!("data written");
                             tokio::io::AsyncWriteExt::write(&mut con, &buf).await.unwrap();
@@ -299,7 +284,6 @@ impl TlsStream {
                     },
                     _ = notify.notified() => {
                         if rustls_con.lock().await.write_tls(&mut buf).unwrap() > 0 {
-                            debug!("data written");
                             tokio::io::AsyncWriteExt::write(&mut con, &buf).await.unwrap();
                             buf.clear();
                             for i in write_wakers.iter() {
