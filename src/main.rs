@@ -166,17 +166,6 @@ async fn main() {
                 .unwrap(),
         );
 
-        let mut stream = TlsStream::new(
-            &tls_server_config,
-            tokio::net::TcpListener::bind(https)
-                .await
-                .unwrap()
-                .accept()
-                .await
-                .unwrap()
-                .0,
-        );
-
         let tls_acceptor = TlsAcceptor::new(https, &tls_server_config).await;
         hyper::server::Server::builder(tls_acceptor)
             .serve(router.into_make_service())
