@@ -134,7 +134,7 @@ async fn main() {
         .route("/*path", get(webpages::handler))
         .with_state(state.clone());
     if let Some(ref path) = state.args.files {
-        router = router.nest_service("/", ServeDir::new(path))
+        router = router.nest_service("/static", ServeDir::new(path))
     }
 
     if state.args.dev {
