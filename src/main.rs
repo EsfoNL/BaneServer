@@ -10,7 +10,7 @@ use axum::{
     Router,
 };
 use clap::Parser;
-use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use notify::Watcher;
 use rustls::ServerConnection;
@@ -176,6 +176,7 @@ async fn main() {
                 .0,
         );
         let mut res = Vec::new();
+        let _ = stream.close().await;
         let _ = stream.read_to_end(&mut res).await;
         println!("{}", String::from_utf8_lossy(res.as_slice()));
 
