@@ -10,10 +10,11 @@ use axum::{
     Router,
 };
 use clap::Parser;
+use hyper::server::accept::Accept;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use notify::Watcher;
-use rustls::ServerConnection;
+use rustls::{ServerConfig, ServerConnection};
 use tracing::{debug, error, info};
 use webpages::gitea_handler;
 //mod api;
@@ -188,7 +189,11 @@ async fn main() {
         println!("{}", s);
         let _ = stream.shutdown().await;
 
-        //let tls_acceptor = TlsAcceptor::new(https, &tls_server_config).await;
+        let tls_acceptor = TlsAcceptor::new(https, &tls_server_config).await;
+        hyper::server::Server::builder(tls_acceptor)
+            .serve(router.into_make_service())
+            .await
+            .unwrap();
         // let acceptor =
         //         .map(|e| {});
         // let stream = tok
@@ -211,13 +216,34 @@ async fn main() {
     }
 }
 
-#[allow(dead_code)]
-struct TlsAcceptor {}
+struct TlsAcceptor {
+    tcp_listener: tokio::net::TcpListener,
+    config: Arc<ServerConfig>,
+}
 
-#[allow(dead_code)]
 impl TlsAcceptor {
-    async fn new(_socket_addr: SocketAddr, _config: &Arc<rustls::ServerConfig>) -> Self {
-        Self {}
+    async fn new(socket_addr: SocketAddr, config: &Arc<rustls::ServerConfig>) -> Self {
+        Self {
+            tcp_listener: tokio::net::TcpListener::bind(socket_addr).await.unwrap(),
+            config: config.clone(),
+        }
+    }
+}
+
+impl Accept for TlsAcceptor {
+    type Conn = TlsStream;
+
+    type Error = std::io::Error;
+
+    fn poll_accept(
+        self: pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Option<Result<Self::Conn, Self::Error>>> {
+        match self.tcp_listener.poll_accept(cx) {
+            Poll::Ready(Ok(e)) => Poll::Ready(Some(Ok(TlsStream::new(&self.config, e.0)))),
+            Poll::Ready(Err(e)) => Poll::Ready(Some(Err(e))),
+            Poll::Pending => Poll::Pending,
+        }
     }
 }
 
