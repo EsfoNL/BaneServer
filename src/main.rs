@@ -243,7 +243,7 @@ impl TlsStream {
                             write_wakers.push(v);
                         },
                         Ok(_) = con.readable() => {
-                            con.try_read_buf(&mut buf).unwrap();
+                            if let Ok(_) = con.try_read_buf(&mut buf) {
                             rustls_con.lock().await.read_tls(&mut &buf[..]).unwrap();
                             buf.clear();
                             rustls_con.lock().await.process_new_packets().unwrap();
@@ -253,6 +253,7 @@ impl TlsStream {
                                 }
                                 read_wakers.clear();
                             }
+                                }
                         },
                         Ok(_) = con.writable() => {
                             rustls_con.lock().await.write_tls(&mut buf).unwrap();
