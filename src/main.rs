@@ -3,6 +3,7 @@ use std::{
     net::SocketAddr,
     pin,
     task::Poll,
+    time::Duration,
 };
 
 use tower_http::services::ServeDir;
@@ -234,11 +235,19 @@ struct TlsStream {
     rustls_con: Arc<tokio::sync::Mutex<ServerConnection>>,
     read_waker_sender: tokio::sync::mpsc::Sender<std::task::Waker>,
     write_notify: Arc<tokio::sync::Notify>,
+    task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Drop for TlsStream {
     fn drop(&mut self) {
         let _ = self.close.try_send(());
+        task = self.task.take();
+        if let Some(e) = task {
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(10)).await;
+                e.abort();
+            })
+        }
     }
 }
 
@@ -298,6 +307,7 @@ impl TlsStream {
             rustls_con: sec_con,
             read_waker_sender: read_sender,
             write_notify: n_2,
+            task: None,
         }
     }
 }
