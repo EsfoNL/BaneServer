@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 argon2 = "0.4.1"
 async-trait = "0.1.72"
-axum = { version = "0.6.20", features= ["macros"] }
+axum = "0.6.20"
 clap = { version = "4.0.32", features = ["derive"] }
 console-subscriber = "0.1.9"
 dashmap = "5.4.0"
