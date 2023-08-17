@@ -241,12 +241,12 @@ struct TlsStream {
 impl Drop for TlsStream {
     fn drop(&mut self) {
         let _ = self.close.try_send(());
-        task = self.task.take();
+        let task = self.task.take();
         if let Some(e) = task {
             tokio::spawn(async move {
                 tokio::time::sleep(Duration::from_secs(10)).await;
                 e.abort();
-            })
+            });
         }
     }
 }
