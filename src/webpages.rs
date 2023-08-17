@@ -104,7 +104,7 @@ pub async fn gitea_handler(
             warn!("{}", e);
         })?;
     debug!("response: {e:#?}");
-    let headers = e.headers().to_owned();
+    let mut headers = e.headers().to_owned();
     let status = e.status().to_owned();
     let bytes = e.bytes().await.map_err(|_| ())?;
     let mut actual_res = axum::response::Response::new(axum::body::Full::new(bytes));
