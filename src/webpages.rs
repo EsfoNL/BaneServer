@@ -83,16 +83,9 @@ pub async fn gitea_handler(
 ) -> Result<impl IntoResponse, ()> {
     // http::Request != reqwest::Request
     let mut url = reqwest::Url::parse("http://127.0.0.1:3000").unwrap();
-    let path = request.uri().path()["/gitea".len()..].to_owned();
-    let query = request.uri().query();
-
-    // .ok_or(())?.as_str()["/gitea".len()..].to_owned();
+    let path = request.uri().path_and_query().ok_or(())?.as_str()["/gitea".len()..].to_owned();
     debug!("{} -> {path}", request.uri());
-    if let Some(ref v) = query {
-        debug!("query: {v}");
-    }
     url.set_path(&path);
-    url.set_query(query);
     let mut new_request = Request::new(request.method().clone(), url);
     *new_request.headers_mut() = request.headers().to_owned();
     *new_request.body_mut() = Some(request.into_body().into());
