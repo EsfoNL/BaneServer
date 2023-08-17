@@ -101,6 +101,7 @@ pub async fn gitea_handler(
         .map_err(|e| {
             warn!("{}", e);
         })?;
+    debug!("response: {e:#?}");
     let headers = e.headers().to_owned();
     let status = e.status().to_owned();
     let mut actual_res =
