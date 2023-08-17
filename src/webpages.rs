@@ -1,9 +1,9 @@
 use crate::state::{self, State};
 use async_trait::async_trait;
 use axum::{
-    body::Bytes,
+    body::{Bytes, Full},
     extract::{FromRequest, Path},
-    response::Html,
+    response::{Html, IntoResponse},
 };
 use futures::StreamExt;
 use http::Uri;
@@ -80,12 +80,7 @@ fn to_json_or_string(string: &str) -> serde_json::Value {
 pub async fn gitea_handler(
     axum::extract::State(state): axum::extract::State<Arc<State>>,
     RequestExtractor(request): RequestExtractor,
-) -> Result<
-    http::Response<
-        axum::body::StreamBody<impl futures::Stream<Item = Result<Bytes, reqwest::Error>>>,
-    >,
-    (),
-> {
+) -> Result<impl IntoResponse, ()> {
     // http::Request != reqwest::Request
     let mut url = reqwest::Url::parse("http://127.0.0.1:3000").unwrap();
     let path = request.uri().path()["/gitea".len()..].to_owned();
@@ -111,8 +106,8 @@ pub async fn gitea_handler(
     debug!("response: {e:#?}");
     let headers = e.headers().to_owned();
     let status = e.status().to_owned();
-    let mut actual_res =
-        axum::response::Response::new(axum::body::StreamBody::new(e.bytes_stream()));
+    let bytes = e.bytes().await.map_err(|_| ())?;
+    let mut actual_res = axum::response::Response::new(axum::body::Full::new(bytes));
     *actual_res.headers_mut() = headers;
     *actual_res.status_mut() = status;
     Ok(actual_res)
