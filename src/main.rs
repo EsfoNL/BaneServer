@@ -7,6 +7,9 @@ use std::{
     time::Duration,
 };
 
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc {};
+
 use tower_http::services::ServeDir;
 
 use axum::{
