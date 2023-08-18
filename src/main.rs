@@ -292,55 +292,67 @@ impl TlsStream {
             ServerConnection::new(config.clone()).unwrap(),
         ));
         let sec_con = rustls_con.clone();
-        let task = tokio::spawn(async move {
-            let mut read_wakers: Vec<std::task::Waker> = vec![];
-            let mut write_wakers: Vec<std::task::Waker> = vec![];
-            let mut buf = vec![];
-            loop {
-                tokio::select! {
-                    Some(w) = read_reciever.recv() => {
-                        read_wakers.push(w);
-                    },
-                    e = con.readable() => {
-                        e?;
-                        if let Ok(_) = con.try_read_buf(&mut buf) {
-                            rustls_con.lock().await.read_tls(&mut &buf[..])?;
-                            buf.clear();
-                            rustls_con.lock().await.process_new_packets()?;
-                            for i in read_wakers.iter() {
-                                i.wake_by_ref();
-                            }
-                            read_wakers.clear();
-                            rustls_con.lock().await.write_tls(&mut buf)?;
-                            // debug!("data written");
-                            tokio::io::AsyncWriteExt::write(&mut con, &buf).await?;
-                            buf.clear();
-                        }
-                    },
-                    _ = notify.notified() => {
-                        if rustls_con.lock().await.write_tls(&mut buf)? > 0 {
-                            tokio::io::AsyncWriteExt::write(&mut con, &buf).await?;
-                            buf.clear();
-                            for i in write_wakers.iter() {
-                                i.wake_by_ref();
-                            }
-                            write_wakers.clear();
-                        }
-                    },
-
-                    Some(_) = close_recv.recv() => {
-                        let _ = tokio::io::AsyncWriteExt::shutdown(&mut con).await;
-                        return Ok(());
-                    }
-                }
-            }
-        });
+        let task = tokio::spawn(tls_task(con, rustls_con, read_reciever, close_recv, notify));
         Self {
             close,
             rustls_con: sec_con,
             read_waker_sender: read_sender,
             write_notify: n_2,
             task: Some(task),
+        }
+    }
+}
+
+async fn tls_task(
+    mut con: tokio::net::TcpStream,
+    rustls_con: std::sync::Arc<tokio::sync::Mutex<rustls::ServerConnection>>,
+    mut read_reciever: tokio::sync::mpsc::Receiver<std::task::Waker>,
+    mut close_reciever: tokio::sync::mpsc::Receiver<()>,
+    notify: std::sync::Arc<tokio::sync::Notify>,
+) -> Result<(), anyhow::Error> {
+    let mut read_wakers: Vec<std::task::Waker> = vec![];
+    let mut write_wakers: Vec<std::task::Waker> = vec![];
+    let mut buf = vec![];
+    loop {
+        tokio::select! {
+            w = read_reciever.recv() => {
+                if let Some(w) = w {
+                    read_wakers.push(w);
+                } else {
+                    return Ok(())
+                }
+            },
+            e = con.readable() => {
+                e?;
+                if let Ok(_) = con.try_read_buf(&mut buf) {
+                    rustls_con.lock().await.read_tls(&mut &buf[..])?;
+                    buf.clear();
+                    rustls_con.lock().await.process_new_packets()?;
+                    for i in read_wakers.iter() {
+                        i.wake_by_ref();
+                    }
+                    read_wakers.clear();
+                    rustls_con.lock().await.write_tls(&mut buf)?;
+                    // debug!("data written");
+                    tokio::io::AsyncWriteExt::write(&mut con, &buf).await?;
+                    buf.clear();
+                }
+            },
+            _ = notify.notified() => {
+                if rustls_con.lock().await.write_tls(&mut buf)? > 0 {
+                    tokio::io::AsyncWriteExt::write(&mut con, &buf).await?;
+                    buf.clear();
+                    for i in write_wakers.iter() {
+                        i.wake_by_ref();
+                    }
+                    write_wakers.clear();
+                }
+            },
+
+            _ = close_reciever.recv() => {
+                let _ = tokio::io::AsyncWriteExt::shutdown(&mut con).await;
+                return Ok(());
+            }
         }
     }
 }
