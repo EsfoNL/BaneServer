@@ -31,15 +31,7 @@ impl State {
         let subscribers = dashmap::DashMap::new();
         let mut tera = Tera::new(&format!("{}/**", &args.template_dir));
         if args.tokio_console {
-            let (filter, handle) =
-                reload::Layer::new(LevelFilter::from_level(args.log_level.clone()));
-            let tracing_fmt = tracing_subscriber::fmt::layer();
-            let console_subscriber = console_subscriber::spawn();
-            tracing_subscriber::registry()
-                .with(console_subscriber)
-                .with(filter)
-                .with(tracing_fmt)
-                .init();
+            let console_subscriber = console_subscriber::init();
         } else {
             let (filter, handle) =
                 reload::Layer::new(LevelFilter::from_level(args.log_level.clone()));
