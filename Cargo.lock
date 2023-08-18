@@ -229,6 +229,7 @@ dependencies = [
 name = "bane_server"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "argon2",
  "async-trait",
  "axum",
