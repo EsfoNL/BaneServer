@@ -37,9 +37,6 @@ async fn main() {
     let state = Arc::new(State::new(args).await);
     *state.watcher.write().await = Some(signal_handler(state.clone()));
 
-    if state.args.tokio_console {
-        console_subscriber::init();
-    }
     /*
     // websocket connection for when user is in app.
     let api_v0_ws = warp::path("ws")

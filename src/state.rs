@@ -23,7 +23,6 @@ pub struct State {
     pub tera: RwLock<Option<Tera>>,
     pub context: tera::Context,
     pub watcher: RwLock<Option<INotifyWatcher>>,
-    pub filter_handle: Mutex<Handle<LevelFilter, Registry>>,
 }
 
 impl State {
@@ -31,12 +30,25 @@ impl State {
         let db = crate::db::configure(&args).await;
         let subscribers = dashmap::DashMap::new();
         let mut tera = Tera::new(&format!("{}/**", &args.template_dir));
-        let (filter, handle) = reload::Layer::new(LevelFilter::from_level(args.log_level.clone()));
-        let tracing_fmt = tracing_subscriber::fmt::layer();
-        tracing_subscriber::registry()
-            .with(filter)
-            .with(tracing_fmt)
-            .init();
+        if args.tokio_console {
+            let (filter, handle) =
+                reload::Layer::new(LevelFilter::from_level(args.log_level.clone()));
+            let tracing_fmt = tracing_subscriber::fmt::layer();
+            let console_subscriber = console_subscriber::spawn();
+            tracing_subscriber::registry()
+                .with(console_subscriber)
+                .with(filter)
+                .with(tracing_fmt)
+                .init();
+        } else {
+            let (filter, handle) =
+                reload::Layer::new(LevelFilter::from_level(args.log_level.clone()));
+            let tracing_fmt = tracing_subscriber::fmt::layer();
+            tracing_subscriber::registry()
+                .with(filter)
+                .with(tracing_fmt)
+                .init();
+        }
         match tera {
             Ok(ref mut tera) => {
                 tera.register_function("command", crate::webpages::command);
@@ -60,7 +72,6 @@ impl State {
             context,
             reqwest_client: Client::new(),
             watcher: RwLock::new(None),
-            filter_handle: Mutex::new(handle),
         }
     }
 }
