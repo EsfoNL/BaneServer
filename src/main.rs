@@ -2,6 +2,7 @@ use std::{
     io::{Read, Write},
     net::SocketAddr,
     pin,
+    str::FromStr,
     task::Poll,
     time::Duration,
 };
@@ -33,16 +34,13 @@ use prelude::*;
 #[tokio::main]
 async fn main() {
     let args = cli::Cli::parse();
-    tracing_subscriber::fmt()
-        .with_max_level(args.log_level)
-        .init();
     let state = Arc::new(State::new(args).await);
     *state.watcher.write().await = Some(signal_handler(state.clone()));
-    /*
 
     if state.args.tokio_console {
         console_subscriber::init();
     }
+    /*
     // websocket connection for when user is in app.
     let api_v0_ws = warp::path("ws")
         .and(filters::ws::ws())
@@ -122,6 +120,7 @@ async fn main() {
     //                 .map_err(|_| warp::reject::not_found())
     //         })
     //     });
+
     let mut router: Router<(), axum::body::Body> = Router::new()
         .route(
             "/gitea",
@@ -138,6 +137,38 @@ async fn main() {
         router = router.nest_service("/static", ServeDir::new(path))
     }
 
+    /*    let listener_state = state.clone();
+        tokio::spawn(async move {
+            let sock = tokio::net::TcpListener::bind(std::net::SocketAddr::new(
+                std::net::Ipv4Addr::new(127, 0, 0, 1).into(),
+                5000,
+            ))
+            .await
+            .unwrap();
+            loop {
+                let con_state = listener_state.clone();
+                if let Ok((mut con, _)) = sock.accept().await {
+                    tokio::spawn(async move {
+                        let mut buf = vec![];
+                        loop {
+                            let val = con.read_u8().await.unwrap();
+                            if val != 0 {
+                                buf.push(val)
+                            } else {
+                                let string = String::from_utf8_lossy(&buf).into_owned();
+                                buf.clear();
+                                if let Ok(v) = tracing::Level::from_str(&string) {
+                                    let _ = con_state.filter_handle.lock().await.modify(|e| {
+                                        *e = tracing::level_filters::LevelFilter::from_level(v)
+                                    });
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+        });
+    */
     if state.args.dev {
         info!("running dev mode!");
         let addr = std::net::SocketAddr::new(

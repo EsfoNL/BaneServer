@@ -5,8 +5,14 @@ use notify::INotifyWatcher;
 use reqwest::Client;
 use std::fmt::Debug;
 use tera::Tera;
-use tokio::sync::RwLock;
-use tracing::{error, info};
+use tokio::sync::{Mutex, RwLock};
+use tracing::{error, info, level_filters::LevelFilter};
+use tracing_subscriber::{
+    prelude::__tracing_subscriber_SubscriberExt,
+    reload::{self, Handle},
+    util::SubscriberInitExt,
+    Registry,
+};
 
 #[derive(Debug)]
 pub struct State {
@@ -17,6 +23,7 @@ pub struct State {
     pub tera: RwLock<Option<Tera>>,
     pub context: tera::Context,
     pub watcher: RwLock<Option<INotifyWatcher>>,
+    pub filter_handle: Mutex<Handle<LevelFilter, Registry>>,
 }
 
 impl State {
@@ -24,6 +31,12 @@ impl State {
         let db = crate::db::configure(&args).await;
         let subscribers = dashmap::DashMap::new();
         let mut tera = Tera::new(&format!("{}/**", &args.template_dir));
+        let (filter, handle) = reload::Layer::new(LevelFilter::from_level(args.log_level.clone()));
+        let tracing_fmt = tracing_subscriber::fmt::layer();
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(tracing_fmt)
+            .init();
         match tera {
             Ok(ref mut tera) => {
                 tera.register_function("command", crate::webpages::command);
@@ -47,6 +60,7 @@ impl State {
             context,
             reqwest_client: Client::new(),
             watcher: RwLock::new(None),
+            filter_handle: Mutex::new(handle),
         }
     }
 }
