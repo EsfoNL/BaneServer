@@ -301,7 +301,8 @@ impl TlsStream {
                     Some(w) = read_reciever.recv() => {
                         read_wakers.push(w);
                     },
-                    Ok(_) = con.readable() => {
+                    e = con.readable() => {
+                        e?;
                         if let Ok(_) = con.try_read_buf(&mut buf) {
                             rustls_con.lock().await.read_tls(&mut &buf[..])?;
                             buf.clear();
@@ -326,6 +327,7 @@ impl TlsStream {
                             write_wakers.clear();
                         }
                     },
+
                     Some(_) = close_recv.recv() => {
                         let _ = tokio::io::AsyncWriteExt::shutdown(&mut con).await;
                         return Ok(());
