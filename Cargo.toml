@@ -9,7 +9,7 @@ edition = "2021"
 anyhow = "1.0.75"
 argon2 = "0.4.1"
 async-trait = "0.1.72"
-axum = "0.6.20"
+axum = { version = "0.6.20", features = ["tracing"] }
 clap = { version = "4.0.32", features = ["derive"] }
 console-subscriber = "0.1.9"
 dashmap = "5.4.0"
