@@ -2,7 +2,6 @@ use std::{
     io::{Read, Write},
     net::SocketAddr,
     pin,
-    str::FromStr,
     task::Poll,
     time::Duration,
 };
@@ -10,19 +9,17 @@ use std::{
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc {};
 
-use tower_http::services::ServeDir;
-
 use axum::{
     routing::{get, MethodFilter, MethodRouter},
     Router,
 };
 use clap::Parser;
 use hyper::server::accept::Accept;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncWrite};
 
 use notify::Watcher;
 use rustls::{ServerConfig, ServerConnection};
-use tracing::{debug, error, info};
+use tracing::{error, info};
 use webpages::gitea_handler;
 //mod api;
 mod cli;
@@ -121,7 +118,7 @@ async fn main() {
     //         })
     //     });
 
-    let mut router: Router<(), axum::body::Body> = Router::new()
+    let router: Router<(), axum::body::Body> = Router::new()
         .route(
             "/gitea",
             MethodRouter::new().on(MethodFilter::all(), gitea_handler),
@@ -130,12 +127,14 @@ async fn main() {
             "/gitea/*key",
             MethodRouter::new().on(MethodFilter::all(), gitea_handler),
         )
-        .route("/", get(webpages::root_handler))
-        .route("/*path", get(webpages::handler))
+        .route(
+            "/",
+            get(|state, req| {
+                webpages::common_handler(axum::extract::Path(String::new()), state, req)
+            }),
+        )
+        .route("/*path", get(webpages::common_handler))
         .with_state(state.clone());
-    if let Some(ref path) = state.args.files {
-        router = router.fallback_service(ServeDir::new(path))
-    }
 
     /*    let listener_state = state.clone();
         tokio::spawn(async move {
@@ -283,11 +282,11 @@ impl Drop for TlsStream {
 }
 
 impl TlsStream {
-    fn new(config: &Arc<rustls::ServerConfig>, mut con: tokio::net::TcpStream) -> Self {
-        let (read_sender, mut read_reciever) = tokio::sync::mpsc::channel(16);
+    fn new(config: &Arc<rustls::ServerConfig>, con: tokio::net::TcpStream) -> Self {
+        let (read_sender, read_reciever) = tokio::sync::mpsc::channel(16);
         let notify = Arc::new(tokio::sync::Notify::new());
         let n_2 = notify.clone();
-        let (close, mut close_recv) = tokio::sync::mpsc::channel(1);
+        let (close, close_recv) = tokio::sync::mpsc::channel(1);
         let rustls_con = Arc::new(tokio::sync::Mutex::new(
             ServerConnection::new(config.clone()).unwrap(),
         ));
@@ -417,18 +416,23 @@ impl AsyncWrite for TlsStream {
     }
 }
 
+#[tracing::instrument(skip(state))]
 fn signal_handler(state: Arc<State>) -> notify::INotifyWatcher {
     let mut watcher = {
         let state = state.clone();
         notify::recommended_watcher(move |res| {
             if let Ok(_) = res {
-                if let Some(Err(e)) = state
-                    .tera
-                    .blocking_write()
-                    .as_mut()
-                    .map(|e| e.full_reload())
-                {
-                    error!("terra error: {}", e);
+                let mut lock = state.tera.blocking_write();
+                match lock.as_mut().map(|e| e.full_reload()) {
+                    Some(Err(e)) => error!("terra error: {}", e),
+                    Some(Ok(_)) => info!(
+                        "terra reload: {:#?}",
+                        lock.as_mut()
+                            .unwrap()
+                            .get_template_names()
+                            .collect::<Vec<_>>()
+                    ),
+                    _ => *lock = State::tera(&state.args.template_dir),
                 };
             }
         })
