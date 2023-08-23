@@ -19,7 +19,7 @@ use tokio::io::{AsyncRead, AsyncWrite};
 
 use notify::Watcher;
 use rustls::{ServerConfig, ServerConnection};
-use tracing::{error, info};
+use tracing::{debug, error, info};
 use webpages::gitea_handler;
 //mod api;
 mod cli;
@@ -302,6 +302,7 @@ impl TlsStream {
     }
 }
 
+#[tracing::instrument(skip_all)]
 async fn tls_task(
     mut con: tokio::net::TcpStream,
     rustls_con: std::sync::Arc<tokio::sync::Mutex<rustls::ServerConnection>>,
@@ -315,6 +316,7 @@ async fn tls_task(
     loop {
         tokio::select! {
             w = read_reciever.recv() => {
+                debug!("waker recv!");
                 if let Some(w) = w {
                     read_wakers.push(w);
                 } else {
@@ -332,15 +334,22 @@ async fn tls_task(
                     }
                     read_wakers.clear();
                     rustls_con.lock().await.write_tls(&mut buf)?;
-                    // debug!("data written");
+                    debug!("data written");
                     tokio::io::AsyncWriteExt::write(&mut con, &buf).await?;
                     buf.clear();
                 }
             },
             _ = notify.notified() => {
+                debug!("data written");
                 if rustls_con.lock().await.write_tls(&mut buf)? > 0 {
-                    tokio::io::AsyncWriteExt::write(&mut con, &buf).await?;
-                    buf.clear();
+                    loop {
+                        let read_len = tokio::io::AsyncWriteExt::write(&mut con, &buf).await?;
+                        if read_len < buf.len() {
+                            buf = Vec::from(&buf[read_len..]);
+                        } else {
+                            break;
+                        }
+                    }
                     for i in write_wakers.iter() {
                         i.wake_by_ref();
                     }
@@ -349,7 +358,9 @@ async fn tls_task(
             },
 
             _ = close_reciever.recv() => {
-                let _ = tokio::io::AsyncWriteExt::shutdown(&mut con).await;
+                debug!("closing!");
+
+                tokio::io::AsyncWriteExt::shutdown(&mut con).await?;
                 return Ok(());
             }
         }
