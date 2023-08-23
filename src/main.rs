@@ -332,7 +332,6 @@ async fn tls_task(
                     for i in read_wakers.iter() {
                         i.wake_by_ref();
                     }
-                    read_wakers.clear();
                     rustls_con.lock().await.write_tls(&mut buf)?;
                     debug!("data written");
                     tokio::io::AsyncWriteExt::write(&mut con, &buf).await?;
@@ -358,6 +357,9 @@ async fn tls_task(
 
             _ = close_reciever.recv() => {
                 debug!("closing!");
+                for i in write_wakers.iter() {
+                    i.wake_by_ref();
+                }
 
                 tokio::io::AsyncWriteExt::shutdown(&mut con).await?;
                 return Ok(());
