@@ -360,6 +360,14 @@ async fn tls_task(
                 if let Some(w) = write_waker.take() {
                     w.wake();
                 }
+                loop {
+                    let read_len = tokio::io::AsyncWriteExt::write(&mut con, &buf).await?;
+                    if read_len < buf.len() {
+                        buf = Vec::from(&buf[read_len..]);
+                    } else {
+                        break;
+                    }
+                }
 
                 tokio::io::AsyncWriteExt::shutdown(&mut con).await?;
                 return Ok(());
