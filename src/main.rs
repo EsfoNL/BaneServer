@@ -320,6 +320,7 @@ async fn tls_task(
                 if let Some(w) = w {
                     read_waker = Some(w);
                 } else {
+                    debug!("closing");
                     return Ok(())
                 }
             },
