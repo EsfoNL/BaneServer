@@ -310,15 +310,15 @@ async fn tls_task(
     mut close_reciever: tokio::sync::mpsc::Receiver<()>,
     notify: std::sync::Arc<tokio::sync::Notify>,
 ) -> Result<(), anyhow::Error> {
-    let mut read_wakers: Vec<std::task::Waker> = vec![];
-    let mut write_wakers: Vec<std::task::Waker> = vec![];
+    let mut read_waker: Option<std::task::Waker> = None;
+    let mut write_waker: Option<std::task::Waker> = None;
     let mut buf = vec![];
     loop {
         tokio::select! {
             w = read_reciever.recv() => {
                 debug!("waker recv!");
                 if let Some(w) = w {
-                    read_wakers.push(w);
+                    read_waker = Some(w);
                 } else {
                     return Ok(())
                 }
@@ -329,8 +329,8 @@ async fn tls_task(
                     rustls_con.lock().await.read_tls(&mut &buf[..])?;
                     buf.clear();
                     rustls_con.lock().await.process_new_packets()?;
-                    for i in read_wakers.iter() {
-                        i.wake_by_ref();
+                    if let Some(w) = read_waker.take() {
+                        w.wake();
                     }
                     rustls_con.lock().await.write_tls(&mut buf)?;
                     debug!("data written");
@@ -349,16 +349,16 @@ async fn tls_task(
                             break;
                         }
                     }
-                    for i in write_wakers.iter() {
-                        i.wake_by_ref();
+                    if let Some(w) = write_waker.take() {
+                        w.wake()
                     }
                 }
             },
 
             _ = close_reciever.recv() => {
                 debug!("closing!");
-                for i in write_wakers.iter() {
-                    i.wake_by_ref();
+                if let Some(w) = write_waker.take() {
+                    w.wake();
                 }
 
                 tokio::io::AsyncWriteExt::shutdown(&mut con).await?;
