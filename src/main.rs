@@ -353,7 +353,6 @@ async fn tls_task(
                     for i in write_wakers.iter() {
                         i.wake_by_ref();
                     }
-                    write_wakers.clear();
                 }
             },
 
