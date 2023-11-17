@@ -122,8 +122,6 @@ async fn main() {
         .route("/*path", get(webpages::handler))
         .with_state(state.clone());
 
-    if state.args.dev {
-        info!("running dev mode!");
         let addr = std::net::SocketAddr::new(
             // use localhost as
             std::net::Ipv4Addr::new(127, 0, 0, 1).into(),
@@ -134,33 +132,6 @@ async fn main() {
             .await
             .unwrap();
         //warp::serve(req).run(addr).await;
-    } else {
-        let http = std::net::SocketAddr::new(
-            // use localhost as
-            state.args.server_host.clone(),
-            state.args.http_port.clone(),
-        );
-        let https = std::net::SocketAddr::new(
-            // use localhost as
-            state.args.server_host.clone(),
-            state.args.https_port.clone(),
-        );
-        /*
-        let https_server = warp::serve(req)
-            .tls()
-            .key_path(state.args.ssl_key.clone())
-            .cert_path(state.args.ssl_certificate.clone())
-            .bind(https);
-         let redirect = warp::filters::path::full().map(|path: warp::path::FullPath| {
-            warp::redirect(
-                warp::http::Uri::from_str(&("https://esfokk.nl".to_owned() + path.as_str()))
-                    .unwrap(),
-            )
-        });
-        let http_server = warp::serve(static_path.or(redirect)).bind(http);
-        tokio::spawn(https_server);
-        http_server.await;*/
-    }
 }
 
 fn signal_handler(state: Arc<State>) -> notify::INotifyWatcher {
