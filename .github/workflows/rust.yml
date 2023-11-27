@@ -25,3 +25,9 @@ jobs:
       with:
         name: bane_server
         path: target/release/bane_server
+    - name: Cache Cargo packages
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          target
