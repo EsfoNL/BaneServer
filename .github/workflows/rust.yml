@@ -32,4 +32,5 @@ jobs:
       with:
         name: bane_server
         path: target/release/bane_server
+        retention-days: 1
 
