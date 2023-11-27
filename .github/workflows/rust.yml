@@ -16,6 +16,13 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    - name: Cache Cargo packages
+      uses: actions/cache@v3
+      with:
+        key: cargo-cache
+        path: |
+          ~/.cargo/registry
+          target
     - name: Build
       run: cargo build --release
     - name: Run tests
@@ -25,9 +32,4 @@ jobs:
       with:
         name: bane_server
         path: target/release/bane_server
-    - name: Cache Cargo packages
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/registry
-          target
+
