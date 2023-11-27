@@ -20,3 +20,8 @@ jobs:
       run: cargo build --release
     - name: Run tests
       run: cargo test --verbose --release
+    - name: Store build artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: bane_server
+        path: target/release/bane_server
