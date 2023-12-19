@@ -1,45 +1,77 @@
-use crate::state::{self, State};
+use crate::state::State;
 use async_trait::async_trait;
 use axum::{
     body::Bytes,
     extract::{FromRequest, Path},
-    response::Html,
+    response::IntoResponse,
 };
-use futures::StreamExt;
-use http::Uri;
-use reqwest::{header::HeaderMap, Method, Request, RequestBuilder, Response, Version};
-use std::{collections::HashMap, sync::Arc};
-use tera::{Context, Tera};
+use reqwest::Request;
+use std::{collections::HashMap, ops::DerefMut, sync::Arc};
+use tower::Service;
 use tracing::{debug, info, instrument, warn};
 
+#[instrument(skip(state, request))]
+pub async fn common_handler(
+    Path(path): Path<String>,
+    axum::extract::State(state): axum::extract::State<Arc<State>>,
+    RequestExtractor(request): RequestExtractor,
+) -> axum::response::Response {
+    if let Some(lock) = state.tera.write().await.deref_mut() {
+        match lock.render(
+            if path.is_empty() {
+                "root.html"
+            } else {
+                path.as_str()
+            },
+            &state.context,
+        ) {
+            Ok(e) => {
+                info!("tera matched: {}", &path);
+                return axum::response::Response::new(axum::body::boxed(axum::body::Body::from(
+                    e.into_bytes(),
+                )));
+            }
+            Err(tera::Error {
+                kind: tera::ErrorKind::TemplateNotFound(_),
+                ..
+            }) => {
+                // continue to file service
+            }
+            Err(_) => return http::StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        }
+    }
+    if let Some(ref mut e) = state.dir_service.lock().await.deref_mut() {
+        let req = e.call(request).await.unwrap();
+        match req.status() {
+            http::StatusCode::OK => {
+                info!("file matched: {}", &path);
+            }
+            _ => {
+                info!("no route matches!");
+            }
+        };
+        return req.into_response();
+    }
+    return http::StatusCode::NOT_FOUND.into_response();
+}
+
+/*
 pub async fn handler(
     Path(path): Path<String>,
     axum::extract::State(state): axum::extract::State<Arc<State>>,
-) -> Result<Html<String>, &'static str> {
+) -> Result<Vec<u8>, &'static str> {
     if let Some(ref lock) = *state.tera.read().await {
-        Ok(Html(lock.render(&path[1..], &state.context).map_err(
-            |e| {
-                if state.args.verbose {
-                    eprintln!("terra error: {e:?}");
-                }
+        Ok(lock
+            .render(&path, &state.context)
+            .map_err(|e| {
+                warn!("tera error: {}", e);
                 "tera error"
-            },
-        )?))
+            })
+            .map(|e| e.into_bytes())?)
     } else {
         Err("tera not loaded")
     }
-}
-pub async fn root_handler(
-    axum::extract::State(state): axum::extract::State<Arc<State>>,
-) -> Result<Html<String>, &'static str> {
-    Ok(Html(if let Some(ref tera) = *state.tera.read().await {
-        tera.render("root.html", &state.context)
-            .ok()
-            .ok_or("root render failed")?
-    } else {
-        return Err("terra not loaded");
-    }))
-}
+}*/
 
 pub fn command(args: &HashMap<String, tera::Value>) -> Result<tera::Value, tera::Error> {
     let mut command = std::process::Command::new(
@@ -89,9 +121,16 @@ pub async fn gitea_handler(
 > {
     // http::Request != reqwest::Request
     let mut url = reqwest::Url::parse("http://127.0.0.1:3000").unwrap();
-    let path = request.uri().path_and_query().ok_or(())?.as_str()["/gitea".len()..].to_owned();
+    let path = request.uri().path()["/gitea".len()..].to_owned();
+    let query = request.uri().query();
+
+    // .ok_or(())?.as_str()["/gitea".len()..].to_owned();
     debug!("{} -> {path}", request.uri());
+    if let Some(ref v) = query {
+        debug!("query: {v}");
+    }
     url.set_path(&path);
+    url.set_query(query);
     let mut new_request = Request::new(request.method().clone(), url);
     *new_request.headers_mut() = request.headers().to_owned();
     *new_request.body_mut() = Some(request.into_body().into());
@@ -102,6 +141,7 @@ pub async fn gitea_handler(
         .map_err(|e| {
             warn!("{}", e);
         })?;
+    debug!("response: {e:#?}");
     let headers = e.headers().to_owned();
     let status = e.status().to_owned();
     let mut actual_res =
