@@ -62,7 +62,7 @@ pub struct Cli {
     #[arg(long)]
     pub http_port: u16,
 
-    #[arg(long, default_value_t = [127, 0, 0, 1].into())]
+    #[arg(long)]
     pub server_host: std::net::IpAddr,
 
     #[arg(long)]
@@ -86,7 +86,7 @@ pub struct Cli {
     #[arg(long)]
     pub static_dir: String,
 
-    #[arg(long, default_value_t = String::from("templates"))]
+    #[arg(long)]
     pub template_dir: String,
 
     #[arg(long)]
