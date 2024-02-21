@@ -1,5 +1,4 @@
 use crate::prelude::*;
-use crate::state::State;
 use async_trait::async_trait;
 use axum::{
     body::Bytes,
@@ -7,7 +6,7 @@ use axum::{
     response::IntoResponse,
 };
 use reqwest::Request;
-use std::{collections::HashMap, ops::DerefMut, sync::Arc};
+use std::{collections::HashMap, ops::DerefMut};
 use tera::Tera;
 use tower::Service;
 

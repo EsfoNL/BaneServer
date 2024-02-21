@@ -30,7 +30,7 @@ async fn main() {
         a
     };
     let state = Arc::new(State::new(args).await);
-    info!("log level: {}", state.args.log_level);
+    info!("args: {:#?}", state.args);
     *state.watcher.write().await = Some(signal_handler(state.clone()));
     // let api_v0_router = Router::new()
     //     .route("/poll_messages", get())

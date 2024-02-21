@@ -1,4 +1,3 @@
-use crate::cli::Cli;
 use crate::prelude::*;
 use sqlx::mysql::MySqlConnectOptions;
 
