@@ -1,3 +1,5 @@
+pub mod filestream;
+
 use argon2::PasswordHasher;
 
 use rand::distributions::{Alphanumeric, DistString};
@@ -6,11 +8,12 @@ use sqlx::{Executor, Row};
 use crate::prelude::*;
 use serde_json::json;
 
+/*
 pub enum TokenError {
     Expired,
     Else,
 }
-/*
+
 pub async fn poll_messages(state: Arc<State>, token: String, id: Id) -> impl Reply {
     if let Err(e) = validate_token(&token, id, &state).await {
         return match e {

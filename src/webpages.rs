@@ -1,32 +1,54 @@
+use crate::prelude::*;
 use crate::state::State;
 use async_trait::async_trait;
 use axum::{
     body::Bytes,
-    extract::{FromRequest, Path},
+    extract::{FromRequest, Path, Query},
     response::IntoResponse,
 };
 use reqwest::Request;
 use std::{collections::HashMap, ops::DerefMut, sync::Arc};
+use tera::Tera;
 use tower::Service;
-use tracing::{debug, info, instrument, warn};
+
+pub fn tera(path: &str) -> Option<tera::Tera> {
+    match Tera::new(&format!("{}/**", path)) {
+        Ok(mut tera) => {
+            tera.register_function("command", crate::webpages::command);
+            tera.register_function("sh", crate::webpages::shell_command);
+            info!(
+                "loaded terra templates: {:#?}",
+                tera.get_template_names().collect::<Vec<&str>>()
+            );
+            Some(tera)
+        }
+        Err(err) => {
+            error!("terra error: {err}");
+            None
+        }
+    }
+}
 
 #[instrument(skip(state, request))]
-pub async fn common_handler(
+pub async fn webpages_handler(
     Path(path): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
     axum::extract::State(state): axum::extract::State<Arc<State>>,
     RequestExtractor(request): RequestExtractor,
 ) -> axum::response::Response {
-    if let Some(lock) = state.tera.write().await.deref_mut() {
+    if let Some(lock) = state.tera.read().await.as_ref() {
+        let mut cont = state.context.clone();
+        cont.insert("query", &query);
         match lock.render(
             if path.is_empty() {
                 "root.html"
             } else {
                 path.as_str()
             },
-            &state.context,
+            &cont,
         ) {
             Ok(e) => {
-                info!("tera matched: {}", &path);
+                debug!("tera matched: {}", &path);
                 return axum::response::Response::new(axum::body::boxed(axum::body::Body::from(
                     e.into_bytes(),
                 )));
@@ -44,7 +66,7 @@ pub async fn common_handler(
         let req = e.call(request).await.unwrap();
         match req.status() {
             http::StatusCode::OK => {
-                info!("file matched: {}", &path);
+                debug!("file matched: {}", &path);
             }
             _ => {
                 info!("no route matches!");
@@ -52,6 +74,8 @@ pub async fn common_handler(
         };
         return req.into_response();
     }
+
+    info!("404");
     return http::StatusCode::NOT_FOUND.into_response();
 }
 
@@ -100,13 +124,12 @@ pub fn shell_command(args: &HashMap<String, tera::Value>) -> Result<tera::Value,
     command.arg("-c");
     command.arg(args.get("command").unwrap().as_str().unwrap());
     Ok(to_json_or_string(
-        std::str::from_utf8(&command.output().unwrap().stdout.as_slice()).unwrap(),
+        std::str::from_utf8(command.output().unwrap().stdout.as_slice()).unwrap(),
     ))
 }
 
 fn to_json_or_string(string: &str) -> serde_json::Value {
-    let value = serde_json::from_str(string).unwrap_or(serde_json::json!(string));
-    value
+    serde_json::from_str(string).unwrap_or(serde_json::json!(string))
 }
 
 #[instrument(skip(state))]

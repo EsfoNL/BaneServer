@@ -2,11 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::prelude::*;
 
-const FILEPART_SIZE: u64 = 1024 * 1024;
-
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type")]
-pub enum Message {
+pub enum MessageType {
     Message {
         target: Id,
         message: String,

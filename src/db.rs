@@ -12,5 +12,5 @@ pub async fn configure(args: &Cli) -> Db {
     if let Some(ref password) = args.sqlpassword {
         options = options.password(password);
     }
-    Db::connect_with(options).await.unwrap()
+    Db::connect_lazy_with(options)
 }
