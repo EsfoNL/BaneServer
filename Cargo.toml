@@ -1,5 +1,5 @@
 [package]
-name = "bane_server"
+name = "bane-server"
 version = "0.1.0"
 edition = "2021"
 
@@ -13,9 +13,8 @@ clap = { version = "4.0.32", features = ["derive"] }
 console-subscriber = "0.1.9"
 dashmap = "5.4.0"
 either = "1.8.1"
-futures = "0.3.25"
+futures = "0.3.30"
 http = "0.2.9"
-hyper = "0.14.27"
 notify = "5.1.0"
 rand = "0.8.5"
 reqwest = { version = "0.11.18", features=["stream"] }
@@ -27,8 +26,6 @@ thiserror = "1.0.57"
 tokio = { version = "1.23.0", features = ["full", "tracing"] }
 tokio-stream = "0.1.14"
 toml = "0.8.9"
-tower = "0.4.13"
-tower-http = { version = "0.4.3", features = ["fs"] }
 tracing = "0.1.37"
 tracing-subscriber = "0.3.17"
 uuid = { version = "1.7.0", features = ["v4", "serde"] }

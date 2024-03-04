@@ -119,8 +119,8 @@ async fn main() {
     let router: Router<(), axum::body::Body> = Router::new()
         .route(
             "/",
-            get(|query, state, req| {
-                webpages::webpages_handler(axum::extract::Path(String::new()), query, state, req)
+            get(|query, state| {
+                webpages::webpages_handler(axum::extract::Path(String::new()), query, state)
             }),
         )
         .route("/*path", get(webpages::webpages_handler))

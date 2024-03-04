@@ -5,7 +5,7 @@ use notify::INotifyWatcher;
 use reqwest::Client;
 use std::fmt::Debug;
 use tera::Tera;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 use tracing_subscriber::prelude::*;
 #[derive(Debug)]
 pub struct State {
@@ -18,7 +18,6 @@ pub struct State {
     pub tera: RwLock<Option<Tera>>,
     pub context: tera::Context,
     pub watcher: RwLock<Option<INotifyWatcher>>,
-    pub dir_service: Mutex<Option<tower_http::services::ServeDir>>,
 }
 
 impl State {
@@ -28,7 +27,7 @@ impl State {
         let filestreams = dashmap::DashMap::new();
         let tera = crate::webpages::tera(&args.template_dir);
         if args.tokio_console {
-            let _console_subscriber = console_subscriber::init();
+            console_subscriber::init();
         } else {
             let filter = tracing_subscriber::filter::Targets::new()
                 .with_target("bane_server", args.log_level)
@@ -49,7 +48,6 @@ impl State {
             context,
             reqwest_client: Client::new(),
             watcher: RwLock::new(None),
-            dir_service: Mutex::new(args.files.as_ref().map(tower_http::services::ServeDir::new)),
             args,
         }
     }
