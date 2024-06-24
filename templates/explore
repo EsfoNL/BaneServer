@@ -26,18 +26,19 @@
                 <a href="?path={{query.path}}/..">..</a>
             </li>
         {% endif %}
-        {% for file in files %}
-            {% if file.isFile %}
-                {% set path = pub_file_prefix ~ '/' ~ file.path %}
-            {% else %}
-                {% set path = "?path=" ~ file.path %}
-            {% endif %}
+        {% for file in files | filter(key="isFile", value = false) %}
+            {% set path = "?path=" ~ file.path %}
             <li>
-                {% if file.isFile %}
-                <img src="/static/file-solid.svg" class="icon"></img>
-                {% else %}
                 <img src="/static/folder-solid.svg" class="icon"></img>
-                {% endif %}
+                <a href="{{path}}" data-is-file="{{file.isFile}}">
+                    {{file.filename}}
+                </a>
+            </li>
+        {% endfor %}
+        {% for file in files | filter(key="isFile", value = true)}
+            {% set path = pub_file_prefix ~ '/' ~ file.path %}
+            <li>
+                <img src="/static/file-solid.svg" class="icon"></img>
                 <a href="{{path}}" data-is-file="{{file.isFile}}">
                     {{file.filename}}
                 </a>
