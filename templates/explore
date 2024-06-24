@@ -35,7 +35,7 @@
                 </a>
             </li>
         {% endfor %}
-        {% for file in files | filter(key="isFile", value = true)}
+        {% for file in files | filter(key="isFile", value = true) %}
             {% set path = pub_file_prefix ~ '/' ~ file.path %}
             <li>
                 <img src="/static/file-solid.svg" class="icon"></img>
