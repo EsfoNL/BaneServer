@@ -138,6 +138,7 @@ fn is_pub_root(cli: &Cli) -> TeraBoxedTester {
     };
     info!("pub dir absolute path: {path:?}");
     Box::new(move |value: Option<&tera::Value>, _: &[tera::Value]| {
+        debug!("value: {value:?}");
         Ok(value
             .and_then(|e| e.as_str())
             .and_then(|e| {
