@@ -26,7 +26,7 @@
                 {% set path = "?path=" ~ file.path %}
             {% endif %}
             <li>
-                <svg src="/static/file-solid.svg"></svg>
+                <img src="/static/file-solid.svg"></img>
                 <a href="{{path}}" data-is-file="{{file.isFile}}">
                     {{file.filename}}
                 </a>
