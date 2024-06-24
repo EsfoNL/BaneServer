@@ -3,6 +3,12 @@
     <head>
         <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+        <style>
+            .icon {
+                width: 20px;
+                height: 20px;
+            }
+        </style>
     </head>
     <body>
     <h1>
@@ -26,7 +32,11 @@
                 {% set path = "?path=" ~ file.path %}
             {% endif %}
             <li>
-                <img src="/static/file-solid.svg"></img>
+                {% if file.isFile %}
+                <img src="/static/file-solid.svg" class="icon"></img>
+                {% else %}
+                <img src="/static/folder-solid.svg" class="icon"></img>
+                {% endif %}
                 <a href="{{path}}" data-is-file="{{file.isFile}}">
                     {{file.filename}}
                 </a>
