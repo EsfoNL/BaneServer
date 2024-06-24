@@ -26,7 +26,7 @@
                 <a href="?path={{query.path}}/..">..</a>
             </li>
         {% endif %}
-        {% for file in files | filter(key="isFile", value = false) %}
+        {% for file in files | filter(attribute="isFile", value = false) %}
             {% set path = "?path=" ~ file.path %}
             <li>
                 <img src="/static/folder-solid.svg" class="icon"></img>
@@ -35,7 +35,7 @@
                 </a>
             </li>
         {% endfor %}
-        {% for file in files | filter(key="isFile", value = true) %}
+        {% for file in files | filter(attribute="isFile", value = true) %}
             {% set path = pub_file_prefix ~ '/' ~ file.path %}
             <li>
                 <img src="/static/file-solid.svg" class="icon"></img>
