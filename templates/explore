@@ -12,7 +12,7 @@
     </head>
     <body>
     <h1>
-    Path: {{ query | get(key="path", default="<root>") }}
+    Path: {% if query.path is pub_root %}<root>{% else %}{{query.path}}{% endif %}
     </h1>
     {% if query.path %}
         {% set files = files(path = query.path) %}
