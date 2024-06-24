@@ -52,6 +52,8 @@ impl Default for Cli {
             tokio_console: false,
             gitea_port: 3000,
             log_level: tracing::Level::INFO,
+            pub_dir: None,
+            pub_file_prefix: String::new(),
         }
     }
 }
@@ -102,4 +104,11 @@ pub struct Cli {
     #[arg(long)]
     #[serde(deserialize_with = "deserialize_tracing_level")]
     pub log_level: tracing::Level,
+
+    #[arg(long)]
+    pub pub_dir: Option<std::path::PathBuf>,
+
+    /// static file server path prefix for [pub_dir]
+    #[arg(long)]
+    pub pub_file_prefix: String,
 }

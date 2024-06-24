@@ -12,6 +12,7 @@ mod state;
 mod webpages;
 //mod websocket;
 use prelude::*;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() {
@@ -29,8 +30,20 @@ async fn main() {
         a.update_from(std::env::args_os());
         a
     };
+    if args.tokio_console {
+        console_subscriber::init();
+    } else {
+        let filter = tracing_subscriber::filter::Targets::new()
+            .with_target("bane_server", args.log_level)
+            .with_default(tracing::Level::INFO);
+        let tracing_fmt = tracing_subscriber::fmt::layer();
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(tracing_fmt)
+            .init();
+    }
+    info!("args: {args:#?}");
     let state = Arc::new(State::new(args).await);
-    info!("args: {:#?}", state.args);
     *state.watcher.write().await = Some(signal_handler(state.clone()));
     // let api_v0_router = Router::new()
     //     .route("/poll_messages", get())
@@ -173,7 +186,17 @@ fn signal_handler(state: Arc<State>) -> notify::INotifyWatcher {
                             .get_template_names()
                             .collect::<Vec<_>>()
                     ),
-                    _ => *lock = webpages::tera(&state.args.template_dir),
+                    _ => {
+                        *lock = {
+                            match webpages::tera(&state.args) {
+                                Err(e) => {
+                                    error!("Tera error: {e}");
+                                    None
+                                }
+                                e => e.ok(),
+                            }
+                        }
+                    }
                 };
             }
         })

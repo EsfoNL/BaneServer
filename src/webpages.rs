@@ -8,23 +8,29 @@ use axum::{
 use reqwest::Request;
 use std::collections::HashMap;
 use tera::Tera;
+use tracing::info_span;
 
-pub fn tera(path: &str) -> Option<tera::Tera> {
-    match Tera::new(&format!("{}/**", path)) {
+pub fn tera(cli: &Cli) -> Result<tera::Tera, tera::Error> {
+    match Tera::new(&format!("{}/**", cli.template_dir)) {
         Ok(mut tera) => {
-            tera.register_function("command", crate::webpages::command);
-            tera.register_function("sh", crate::webpages::shell_command);
+            tera.register_function("command", command);
+            tera.register_function("sh", shell_command);
+            tera.register_function("files", files(cli));
+            tera.register_tester("pub_root", is_pub_root(cli));
             info!(
                 "loaded terra templates: {:#?}",
                 tera.get_template_names().collect::<Vec<&str>>()
             );
-            Some(tera)
+            Ok(tera)
         }
-        Err(err) => {
-            error!("terra error: {err}");
-            None
-        }
+        Err(e) => Err(e),
     }
+}
+
+pub fn tera_context(cli: &Cli) -> tera::Context {
+    let mut context = tera::Context::new();
+    context.insert("pub_file_prefix", &cli.pub_file_prefix);
+    context
 }
 
 #[instrument(skip(state))]
@@ -50,13 +56,10 @@ pub async fn webpages_handler(
                     e.into_bytes(),
                 )));
             }
-            Err(tera::Error {
-                kind: tera::ErrorKind::TemplateNotFound(_),
-                ..
-            }) => {
-                // continue to file service
+            Err(e) => {
+                error!("terra error: {e:?}");
+                return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
             }
-            Err(_) => return http::StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         }
     }
 
@@ -115,4 +118,110 @@ pub fn shell_command(args: &HashMap<String, tera::Value>) -> Result<tera::Value,
 
 fn to_json_or_string(string: &str) -> serde_json::Value {
     serde_json::from_str(string).unwrap_or(serde_json::json!(string))
+}
+
+type TeraBoxedTester =
+    Box<dyn Send + Sync + Fn(Option<&tera::Value>, &[tera::Value]) -> Result<bool, tera::Error>>;
+
+fn is_pub_root(cli: &Cli) -> TeraBoxedTester {
+    let mut path = std::env::current_dir().unwrap();
+    let failed_to_construct_path: TeraBoxedTester = Box::new(|_, _| {
+        error!("Tera pub dir not set");
+        Err(tera::Error::msg("tera pub dir not set"))
+    });
+    let Some(add_path) = cli.pub_dir.as_ref().map(std::path::PathBuf::from) else {
+        return failed_to_construct_path;
+    };
+    path.push(add_path);
+    let Ok(path) = path.canonicalize() else {
+        return failed_to_construct_path;
+    };
+    info!("pub dir absolute path: {path:?}");
+    Box::new(move |value: Option<&tera::Value>, _: &[tera::Value]| {
+        Ok(value
+            .and_then(|e| e.as_str())
+            .and_then(|e| {
+                let mut cur = std::env::current_dir().unwrap();
+                cur.push(e);
+                cur.canonicalize().ok()
+            })
+            .map(|e| e == path)
+            .unwrap_or(true))
+    })
+}
+
+type TeraBoxedFn =
+    Box<dyn Sync + Send + Fn(&HashMap<String, tera::Value>) -> Result<tera::Value, tera::Error>>;
+
+fn files(cli: &Cli) -> TeraBoxedFn {
+    info!("help!");
+    let mut path = std::env::current_dir().unwrap();
+    let Some(add_path) = cli.pub_dir.as_ref().map(std::path::PathBuf::from) else {
+        return Box::new(|_| {
+            error!("Tera pub dir not set");
+            Err(tera::Error::msg("tera pub dir not set"))
+        });
+    };
+    path.push(add_path);
+    info!("pub dir absolute path: {path:?}");
+
+    Box::new(move |args: &HashMap<String, tera::Value>| {
+        info_span!("files").in_scope(|| {
+            let mut new_path = path.clone();
+            let s = args.get("path").and_then(|e| e.as_str()).unwrap_or("");
+            new_path.push(s);
+            debug!("s: {s}");
+
+            new_path = new_path
+                .canonicalize()
+                .map_err(|e| tera::Error::msg(format!("not a valid path: {new_path:#?}")))?;
+            if !new_path.starts_with(&path) {
+                return Err(tera::Error::msg(format!("not a valid path: {new_path:#?}")));
+            };
+            let res = std::fs::read_dir(&new_path)
+                .map_err(|_| tera::Error::msg(format!("not a valid path: {new_path:#?}")))?
+                .filter_map(Result::ok)
+                .map(|e| {
+                    (
+                        std::path::PathBuf::from(
+                            e.path()
+                                .canonicalize()
+                                .unwrap()
+                                .strip_prefix(&path)
+                                .unwrap(),
+                        ),
+                        e,
+                    )
+                })
+                .map(|(res_path, v)| {
+                    let mut map = tera::Map::new();
+                    map.insert(
+                        String::from("filename"),
+                        res_path
+                            .file_name()
+                            .map(|e| tera::Value::String(e.to_string_lossy().to_string()))
+                            .unwrap_or(tera::Value::Null),
+                    );
+                    map.insert(
+                        String::from("path"),
+                        tera::Value::String(res_path.to_string_lossy().to_string()),
+                    );
+
+                    map.insert(
+                        String::from("isFile"),
+                        tera::Value::Bool(v.file_type().unwrap().is_file()),
+                    );
+                    // map.insert(
+                    //     String::from("filename"),
+                    //     res_path
+                    //         .file_name()
+                    //         .map(|e| tera::Value::String(e.to_string_lossy().to_string()))
+                    //         .unwrap_or(tera::Value::Null),
+                    // );
+                    tera::Value::Object(map)
+                })
+                .collect::<Vec<_>>();
+            Ok(tera::Value::Array(res))
+        })
+    })
 }

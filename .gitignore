@@ -1,8 +1,9 @@
 /target
 .env
 /static
-/templates/**
+# /templates/**
 perf.data
 perf.data.old
 flamegraph.svg
 config.toml
+/pub_dir

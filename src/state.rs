@@ -23,28 +23,20 @@ pub struct State {
 impl State {
     pub async fn new(args: Cli) -> Self {
         let db = crate::db::configure(&args).await;
+        info!("db thing done");
         let subscribers = dashmap::DashMap::new();
         let filestreams = dashmap::DashMap::new();
-        let tera = crate::webpages::tera(&args.template_dir);
-        if args.tokio_console {
-            console_subscriber::init();
-        } else {
-            let filter = tracing_subscriber::filter::Targets::new()
-                .with_target("bane_server", args.log_level)
-                .with_default(tracing::Level::INFO);
-            let tracing_fmt = tracing_subscriber::fmt::layer();
-            tracing_subscriber::registry()
-                .with(filter)
-                .with(tracing_fmt)
-                .init();
+        let tera = crate::webpages::tera(&args);
+        let context = crate::webpages::tera_context(&args);
+        if let Err(ref err) = tera {
+            error!("Terra error: {err}");
         }
-        let context = tera::Context::new();
 
         State {
             db,
             subscribers,
             filestreams,
-            tera: RwLock::new(tera),
+            tera: RwLock::new(tera.ok()),
             context,
             reqwest_client: Client::new(),
             watcher: RwLock::new(None),
