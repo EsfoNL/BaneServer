@@ -19,9 +19,10 @@
     {% else %}
         {% set files = files() %}
     {% endif %}
-    <ol>
+    <ul>
         {% if query.path is not pub_root %}
             <li>
+                <img src="/static/folder-solid.svg" class="icon"></img>
                 <a href="?path={{query.path}}/..">..</a>
             </li>
         {% endif %}
@@ -42,6 +43,6 @@
                 </a>
             </li>
         {% endfor %}
-    </ol>
+    </ul>
     </body>
 </html>
