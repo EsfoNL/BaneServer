@@ -12,7 +12,7 @@
     </head>
     <body>
     <h1>
-    Path: {% if query.path is pub_root %}\<root>{% else %}{{query.path}}{% endif %}
+    Path: /{{query.path}}
     </h1>
     {% if query.path %}
         {% set files = files(path = query.path) %}
