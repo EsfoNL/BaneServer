@@ -1,0 +1,36 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    </head>
+    <body>
+    <h1>
+    Path: {{ query | get(key="path", default="<root>") }}
+    </h1>
+    {% if query.path %}
+        {% set files = files(path = query.path) %}
+    {% else %}
+        {% set files = files() %}
+    {% endif %}
+    <ol>
+        {% if query.path is not pub_root %}
+            <li>
+                <a href="?path={{query.path}}/..">..</a>
+            </li>
+        {% endif %}
+        {% for file in files %}
+            {% if file.isFile %}
+                {% set path = pub_file_prefix ~ '/' ~ file.path %}
+            {% else %}
+                {% set path = "?path=" ~ file.path %}
+            {% endif %}
+            <li>
+                <a href="{{path}}" data-is-file="{{file.isFile}}">
+                    {{file.filename}}
+                </a>
+            </li>
+        {% endfor %}
+    </ol>
+    </body>
+</html>
