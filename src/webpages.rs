@@ -3,10 +3,10 @@ use async_trait::async_trait;
 use axum::{
     body::Bytes,
     extract::{FromRequest, Path, Query},
-    response::IntoResponse,
+    response::{IntoResponse, Response},
 };
 use reqwest::Request;
-use std::collections::HashMap;
+use std::{borrow::Borrow, collections::HashMap, path::PathBuf};
 use tera::Tera;
 use tracing::info_span;
 
@@ -41,6 +41,37 @@ pub async fn webpages_handler(
 ) -> axum::response::Response {
     if let Some(lock) = state.tera.read().await.as_ref() {
         let mut cont = state.context.clone();
+        if let Some(path) = query.get("path") {
+            let Some(base_path) = state.args.pub_dir.clone() else {
+                return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            };
+            let mut actual_base_path = std::env::current_dir().unwrap();
+            actual_base_path.push(&base_path);
+            let Ok(mut canon_base_path) = base_path.canonicalize() else {
+                error!("invalid pub dir: {base_path:#?}");
+                return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            };
+            let mut full_path = canon_base_path.clone();
+            full_path.push(path);
+            let Ok(cannoned_path) = full_path.canonicalize() else {
+                error!("invalid path: {path:#?}");
+                return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            };
+
+            if cannoned_path != full_path {
+                let Ok(server_path) = cannoned_path.strip_prefix(&canon_base_path) else {
+                    return http::StatusCode::NOT_FOUND.into_response();
+                };
+                return http::Response::builder()
+                    .status(http::StatusCode::FOUND)
+                    .header(
+                        "Location",
+                        format!("?path={}", server_path.to_string_lossy().to_string()),
+                    )
+                    .body(axum::body::boxed(axum::body::Body::empty()))
+                    .unwrap();
+            };
+        }
         cont.insert("query", &query);
         match lock.render(
             if path.is_empty() {
