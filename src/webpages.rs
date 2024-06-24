@@ -144,7 +144,9 @@ fn is_pub_root(cli: &Cli) -> TeraBoxedTester {
             .and_then(|e| {
                 let mut cur = std::env::current_dir().unwrap();
                 cur.push(e);
-                cur.canonicalize().ok()
+                let val = cur.canonicalize().ok();
+                debug!("val: {val:?}");
+                val
             })
             .map(|e| e == path)
             .unwrap_or(true))
