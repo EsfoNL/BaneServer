@@ -13,7 +13,7 @@
     </head>
     <body>
     <h1>
-    Path: /Path: /{% if query.path %}{{query.path}}{% endif %}
+    Path: /{% if query.path %}{{query.path}}{% endif %}
     </h1>
     {% if query.path %}
         {% set files = files(path = query.path) %}
