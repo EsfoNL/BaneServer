@@ -1,0 +1,29 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html>
+    <head>
+        {% include "header" %}
+        <style>
+            body {
+                overflow: auto;
+            }
+            .fill {
+                vertical-align: top;
+                display: inline-block;
+                height: 700px;
+                width: 400px;
+                background-color: green;
+            }
+            .test {
+                height: 700px;
+                display: inline-block;
+            }
+        </style>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    </head>
+    <body>
+    <div class="fill"> fill space</div>
+    {% for i in [1, 2, 3, 4, 5] %}<img class="test" src="https://esfokk.nl/static//joke-images/img-{{i}}.webp"></img>{% endfor %}
+    </body>
+</html>
