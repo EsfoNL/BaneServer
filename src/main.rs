@@ -136,6 +136,7 @@ async fn main() {
                 webpages::webpages_handler(axum::extract::Path(String::new()), query, state)
             }),
         )
+        .route("/script/*path", get(webpages::scripts))
         .route("/*path", get(webpages::webpages_handler))
         .route("/api/filestream", get(api::filestream::filestream_handler))
         .route(

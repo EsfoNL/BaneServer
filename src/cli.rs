@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{path::PathBuf, str::FromStr};
 
 use clap::Parser;
 use serde::{Deserialize, Deserializer};
@@ -54,6 +54,7 @@ impl Default for Cli {
             log_level: tracing::Level::INFO,
             pub_dir: None,
             pub_file_prefix: String::new(),
+            scripts_path: PathBuf::from_str("/srv/scripts").unwrap(),
         }
     }
 }
@@ -111,4 +112,7 @@ pub struct Cli {
     /// static file server path prefix for [pub_dir]
     #[arg(long)]
     pub pub_file_prefix: String,
+
+    #[arg(long)]
+    pub scripts_path: PathBuf,
 }

@@ -6,7 +6,10 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use reqwest::Request;
-use std::{borrow::Borrow, collections::HashMap, path::PathBuf};
+use std::{
+    borrow::Borrow, collections::HashMap, os::unix::process::CommandExt, path::PathBuf,
+    process::Command,
+};
 use tera::Tera;
 use tracing::info_span;
 
@@ -258,4 +261,24 @@ fn files(cli: &Cli) -> TeraBoxedFn {
             Ok(tera::Value::Array(res))
         })
     })
+}
+
+pub async fn scripts(
+    Path(path): Path<String>,
+    axum::extract::State(state): axum::extract::State<Arc<State>>,
+) -> axum::response::Response {
+    let mut full_path = state.args.scripts_path.clone();
+    full_path.push(path);
+    let Ok(full_path) = full_path.canonicalize() else {
+        return http::StatusCode::NOT_FOUND.into_response();
+    };
+    if !full_path.starts_with(&state.args.scripts_path) || full_path.is_relative() {
+        return http::StatusCode::NOT_FOUND.into_response();
+    }
+
+    let Ok(out) = Command::new(full_path).output() else {
+        return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+
+    out.stdout.into_response()
 }
