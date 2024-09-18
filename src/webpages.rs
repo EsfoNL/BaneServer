@@ -280,5 +280,7 @@ pub async fn scripts(
         return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
 
-    out.stdout.into_response()
+    String::from_utf8_lossy(&out.stdout)
+        .into_owned()
+        .into_response()
 }
