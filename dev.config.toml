@@ -1,3 +1,6 @@
+server_host = "::"
 http_port = 3000
 log_level = "DEBUG"
 pub_dir = "pub_dir"
+static_dir = "static"
+scripts_path = "/tmp/scripts"

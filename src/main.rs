@@ -129,7 +129,7 @@ async fn main() {
     //         })
     //     });
 
-    let router: Router<(), axum::body::Body> = Router::new()
+    let router = Router::new()
         .route(
             "/",
             get(|query, state| {
@@ -146,29 +146,24 @@ async fn main() {
         // .route("/api/v0", Route)
         .with_state(state.clone());
 
+    let addr = std::net::SocketAddr::new(
+        // use localhost as
+        std::net::Ipv4Addr::new(127, 0, 0, 1).into(),
+        state.args.http_port,
+    );
     if state.args.dev {
         info!("running dev mode!");
-        let addr = std::net::SocketAddr::new(
-            // use localhost as
-            std::net::Ipv4Addr::new(127, 0, 0, 1).into(),
-            state.args.http_port,
-        );
-        axum::Server::bind(&addr)
-            .serve(router.into_make_service())
-            .await
-            .unwrap();
-        //warp::serve(req).run(addr).await;
     } else {
-        let addr = std::net::SocketAddr::new(
-            // use localhost as
-            std::net::Ipv4Addr::new(127, 0, 0, 1).into(),
-            state.args.http_port,
-        );
-        axum::Server::bind(&addr)
-            .serve(router.into_make_service())
-            .await
-            .unwrap();
+        info!("running normal mode!")
     }
+    let tcp_listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .expect(&std::format!("failed to bind to {}", &addr));
+
+    axum::serve(tcp_listener, router.into_make_service())
+        .await
+        .unwrap();
+    //warp::serve(req).run(addr).await;
 }
 
 #[tracing::instrument(skip(state))]

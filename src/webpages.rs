@@ -1,10 +1,12 @@
 use crate::prelude::*;
-use async_trait::async_trait;
 use axum::{
     body::Bytes,
     extract::{FromRequest, Path, Query},
-    response::{IntoResponse, Response},
+    response::IntoResponse,
+    response::Response,
 };
+use futures::StreamExt;
+use http::{response::Parts, HeaderValue, StatusCode};
 use reqwest::Request;
 use std::{
     borrow::Borrow, collections::HashMap, os::unix::process::CommandExt, path::PathBuf,
@@ -71,7 +73,7 @@ pub async fn webpages_handler(
                         "Location",
                         format!("?path={}", server_path.to_string_lossy().to_string()),
                     )
-                    .body(axum::body::boxed(axum::body::Body::empty()))
+                    .body(axum::body::Body::empty())
                     .unwrap();
             };
         }
@@ -86,9 +88,7 @@ pub async fn webpages_handler(
         ) {
             Ok(e) => {
                 debug!("tera matched: {}", &path);
-                return axum::response::Response::new(axum::body::boxed(axum::body::Body::from(
-                    e.into_bytes(),
-                )));
+                return axum::response::Response::new(axum::body::Body::from(e.into_bytes()));
             }
             Err(e) => {
                 error!("terra error: {e:?}");
@@ -265,6 +265,7 @@ fn files(cli: &Cli) -> TeraBoxedFn {
 
 pub async fn scripts(
     Path(path): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
     axum::extract::State(state): axum::extract::State<Arc<State>>,
 ) -> axum::response::Response {
     let mut full_path = state.args.scripts_path.clone();
@@ -275,12 +276,25 @@ pub async fn scripts(
     if !full_path.starts_with(&state.args.scripts_path) || full_path.is_relative() {
         return http::StatusCode::NOT_FOUND.into_response();
     }
-
-    let Ok(out) = Command::new(full_path).output() else {
+    let Ok(query_json) = serde_json::to_string(&query) else {
+        return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+    let Ok(out) = tokio::process::Command::new(full_path)
+        .env("QUERY", query_json)
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|e| e.stdout.ok_or(std::io::ErrorKind::NotFound.into()))
+    else {
         return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
 
-    String::from_utf8_lossy(&out.stdout)
-        .into_owned()
-        .into_response()
+    // res.headers_mut().insert(
+    //     "Content-Type",
+    //     HeaderValue::from_static("text/plain; charset=UTF-8"),
+    // );
+    axum::response::Response::new(axum::body::Body::from_stream(
+        tokio_util::io::ReaderStream::new(out),
+    ))
+
+    // String::from_utf8_lossy().into_owned().into_response()
 }
