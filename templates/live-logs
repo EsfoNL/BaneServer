@@ -25,16 +25,19 @@
             logs.scrollIntoView(false);
           }
         };
-        let sleep = 1000;
-        let ws = new WebSocket("/script/websocket/live-logs");
-        ws.onmessage = onmsg;
-        ws.onclose = () => {
+        let oncls = () =>
+        {
           setTimeout(() => {
             ws = new WebSocket("/script/websocket/live-logs");
             ws.onmessage = onmsg;
+            ws.onclose = oncls;
             console.log("reconnect");
           }, 200)
         }
+        let sleep = 1000;
+        let ws = new WebSocket("/script/websocket/live-logs");
+        ws.onmessage = onmsg;
+        ws.onclose = oncls;
       });
     </script>
   </head>
