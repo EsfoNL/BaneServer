@@ -5,14 +5,18 @@ use axum::{
     response::IntoResponse,
     response::Response,
 };
-use futures::StreamExt;
+use futures::{StreamExt, TryStreamExt};
 use http::{response::Parts, HeaderValue, StatusCode};
 use reqwest::Request;
 use std::{
-    borrow::Borrow, collections::HashMap, os::unix::process::CommandExt, path::PathBuf,
+    borrow::{Borrow, BorrowMut},
+    collections::HashMap,
+    os::unix::process::CommandExt,
+    path::PathBuf,
     process::Command,
 };
 use tera::Tera;
+use tokio::io::AsyncReadExt;
 use tracing::info_span;
 
 pub fn tera(cli: &Cli) -> Result<tera::Tera, tera::Error> {
@@ -263,23 +267,32 @@ fn files(cli: &Cli) -> TeraBoxedFn {
     })
 }
 
+/// tries to get a path stricktly under the [base_path], else returns None
+fn get_path_under_dir(base_path: &PathBuf, path: &str) -> Option<PathBuf> {
+    let mut full_path = base_path.clone();
+    full_path.push(path);
+    let Ok(full_path) = full_path.canonicalize() else {
+        return None;
+    };
+    if !full_path.starts_with(base_path) || full_path.is_relative() {
+        return None;
+    }
+
+    Some(full_path)
+}
+
 pub async fn scripts(
     Path(path): Path<String>,
     Query(query): Query<HashMap<String, String>>,
     axum::extract::State(state): axum::extract::State<Arc<State>>,
 ) -> axum::response::Response {
-    let mut full_path = state.args.scripts_path.clone();
-    full_path.push(path);
-    let Ok(full_path) = full_path.canonicalize() else {
+    let Some(path) = get_path_under_dir(&state.args.scripts_path, &path) else {
         return http::StatusCode::NOT_FOUND.into_response();
     };
-    if !full_path.starts_with(&state.args.scripts_path) || full_path.is_relative() {
-        return http::StatusCode::NOT_FOUND.into_response();
-    }
     let Ok(query_json) = serde_json::to_string(&query) else {
         return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    let Ok(out) = tokio::process::Command::new(full_path)
+    let Ok(out) = tokio::process::Command::new(path)
         .env("QUERY", query_json)
         .stdout(std::process::Stdio::piped())
         .spawn()
@@ -297,4 +310,47 @@ pub async fn scripts(
     ))
 
     // String::from_utf8_lossy().into_owned().into_response()
+}
+
+pub async fn websocket_scripts(
+    Path(path): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+    axum::extract::State(state): axum::extract::State<Arc<State>>,
+    ws: axum::extract::WebSocketUpgrade,
+) -> axum::response::Response {
+    let Some(path) = get_path_under_dir(&state.args.scripts_path, &path) else {
+        return http::StatusCode::NOT_FOUND.into_response();
+    };
+    let Ok(query_json) = serde_json::to_string(&query) else {
+        return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+
+    let Ok(mut out) = tokio::process::Command::new(path)
+        .env("QUERY", query_json)
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|e| e.stdout.ok_or(std::io::ErrorKind::NotFound.into()))
+    else {
+        return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+
+    ws.on_upgrade(|mut ws| async move {
+        let mut buff = [0u8; 256];
+        while let Ok(v) = out.read(&mut buff).await {
+            if ws
+                .send(axum::extract::ws::Message::Text(
+                    String::from_utf8_lossy(&buff[0..v]).to_string(),
+                ))
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
+
+        let _ = ws
+            .close()
+            .await
+            .inspect_err(|e| info!("websocket error: {e:?}"));
+    })
 }

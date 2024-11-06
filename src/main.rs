@@ -136,6 +136,7 @@ async fn main() {
                 webpages::webpages_handler(axum::extract::Path(String::new()), query, state)
             }),
         )
+        .route("/script/websocket/*path", get(webpages::websocket_scripts))
         .route("/script/*path", get(webpages::scripts))
         .route("/*path", get(webpages::webpages_handler))
         .route("/api/filestream", get(api::filestream::filestream_handler))
@@ -158,7 +159,7 @@ async fn main() {
     }
     let tcp_listener = tokio::net::TcpListener::bind(&addr)
         .await
-        .expect(&std::format!("failed to bind to {}", &addr));
+        .unwrap_or_else(|_| panic!("failed to bind to {}", &addr));
 
     axum::serve(tcp_listener, router.into_make_service())
         .await
