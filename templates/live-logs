@@ -4,7 +4,7 @@
     {% include "header" %}
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <link rel="stylesheet" media="screen" href="https://fontlibrary.org//face/fantasque-sans-mono" type="text/css"/> 
+    <link rel="stylesheet" media="screen" href="https://fontlibrary.org/en/face/fantasque-sans-mono" type="text/css"/> 
     <style>
       body {
         background-color: black;
