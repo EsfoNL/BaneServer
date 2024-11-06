@@ -16,6 +16,7 @@
     </style>
     <script>
       addEventListener("DOMContentLoaded", (event) => {
+        let sleep = 1000;
         let ws = new WebSocket("/script/websocket/live-logs");
         ws.onmessage = (m) => {
           <!-- let bottom = Math.abs(logs.scrollHeight - logs.clientHeight - logs.scrollTop) <= 1; -->
@@ -24,6 +25,12 @@
             <!-- logs.scrollIntoView(false); -->
             <!-- console.log("scrolled") -->
           <!-- } -->
+        }
+        ws.onclose = () => {
+          setTimeOut(() => {
+            ws = new WebSocket("/script/websocket/live-logs");
+            console.log("reconnect");
+          }, 200)
         }
       });
     </script>
