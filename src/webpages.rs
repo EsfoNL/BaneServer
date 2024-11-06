@@ -326,16 +326,20 @@ pub async fn websocket_scripts(
         return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
 
-    let Ok(mut out) = tokio::process::Command::new(path)
+    let Ok(mut child) = tokio::process::Command::new(path)
         .env("QUERY", query_json)
         .stdout(std::process::Stdio::piped())
         .spawn()
-        .and_then(|e| e.stdout.ok_or(std::io::ErrorKind::NotFound.into()))
     else {
         return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
 
+    if child.stdout.is_none() {
+        return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+
     ws.on_upgrade(|mut ws| async move {
+        let out = child.stdout.as_mut().unwrap();
         let mut buff = [0u8; 256];
         while let Ok(v) = out.read(&mut buff).await {
             if ws
@@ -352,6 +356,9 @@ pub async fn websocket_scripts(
         let _ = ws
             .close()
             .await
+            .inspect_err(|e| info!("websocket error: {e:?}"));
+        let _ = child
+            .start_kill()
             .inspect_err(|e| info!("websocket error: {e:?}"));
     })
 }
