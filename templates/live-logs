@@ -11,24 +11,27 @@
         font-family: mono;
       }
 
-
+      #anchor {
+        height: 2px;
+      }
       
     </style>
     <script>
       addEventListener("DOMContentLoaded", (event) => {
+        let onmsg = (m) => {
+          let bottom = Math.ceil(window.innerHeight + window.scrollY) >= document.body.offsetHeight - 1;;
+          logs.innerText += m.data;
+          if (bottom) {
+            logs.scrollIntoView(false);
+          }
+        };
         let sleep = 1000;
         let ws = new WebSocket("/script/websocket/live-logs");
-        ws.onmessage = (m) => {
-          <!-- let bottom = Math.abs(logs.scrollHeight - logs.clientHeight - logs.scrollTop) <= 1; -->
-          logs.innerText += m.data;
-          <!-- if (bottom) { -->
-            <!-- logs.scrollIntoView(false); -->
-            <!-- console.log("scrolled") -->
-          <!-- } -->
-        }
+        ws.onmessage = onmsg;
         ws.onclose = () => {
-          setTimeOut(() => {
+          setTimeout(() => {
             ws = new WebSocket("/script/websocket/live-logs");
+            ws.onmessage = onmsg;
             console.log("reconnect");
           }, 200)
         }
@@ -39,5 +42,6 @@
     <div id="logs">
       
     </div>
+    <div id="anchor"></div>
   </body>
 </html>
