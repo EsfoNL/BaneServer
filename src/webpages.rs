@@ -318,6 +318,7 @@ pub async fn websocket_scripts(
     axum::extract::State(state): axum::extract::State<Arc<State>>,
     ws: axum::extract::WebSocketUpgrade,
 ) -> axum::response::Response {
+    info!("ws called: {path}");
     let Some(path) = get_path_under_dir(&state.args.scripts_path, &path) else {
         return http::StatusCode::NOT_FOUND.into_response();
     };
