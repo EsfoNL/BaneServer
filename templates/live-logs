@@ -1,0 +1,35 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html>
+  <head>
+    {% include "header" %}
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <style>
+      body {
+        background-color: black;
+        color: green;
+      }
+
+
+      
+    </style>
+    <script>
+      addEventListener("DOMContentLoaded", (event) => {
+        let ws = new WebSocket("/script/websocket/live-logs");
+        ws.onmessage = (m) => {
+          <!-- let bottom = Math.abs(logs.scrollHeight - logs.clientHeight - logs.scrollTop) <= 1; -->
+          logs.innerText += m.data;
+          <!-- if (bottom) { -->
+            <!-- logs.scrollIntoView(false); -->
+            <!-- console.log("scrolled") -->
+          <!-- } -->
+        }
+      });
+    </script>
+  </head>
+  <body>
+    <div id="logs">
+      
+    </div>
+  </body>
+</html>
