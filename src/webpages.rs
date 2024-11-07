@@ -1,19 +1,20 @@
 use crate::prelude::*;
 use axum::{
     body::Bytes,
-    extract::{FromRequest, Path, Query},
-    response::IntoResponse,
-    response::Response,
+    extract::{ws::Message, FromRequest, Path, Query},
+    response::{IntoResponse, Response},
 };
-use futures::{StreamExt, TryStreamExt};
+use futures::{SinkExt, StreamExt, TryStreamExt};
 use http::{response::Parts, HeaderValue, StatusCode};
 use reqwest::Request;
 use std::{
     borrow::{Borrow, BorrowMut},
     collections::HashMap,
+    ops::{Deref, DerefMut},
     os::unix::process::CommandExt,
     path::PathBuf,
     process::Command,
+    time::Duration,
 };
 use tera::Tera;
 use tokio::io::AsyncReadExt;
@@ -339,26 +340,36 @@ pub async fn websocket_scripts(
     };
 
     ws.on_upgrade(|mut ws| async move {
-        let out = child.stdout.as_mut().unwrap();
+        let mut out = child.stdout.take().unwrap();
         let mut buff = [0u8; 256];
-        while let Ok(v) = out.read(&mut buff).await {
-            if ws
-                .send(axum::extract::ws::Message::Text(
-                    String::from_utf8_lossy(&buff[0..v]).to_string(),
-                ))
-                .await
-                .is_err()
-            {
-                break;
+
+        loop {
+            tokio::select! {
+                _ = ws.recv() => {
+                    break;
+                },
+                data = out.read(&mut buff) => {
+                    let Ok(l) = data else {
+                        break;
+                    };
+                    if ws.send(Message::Text(
+                        String::from_utf8_lossy(&buff[..l]).to_string()
+                    )).await.is_err() {
+                        break;
+                    };
+                }
+
             }
         }
 
-        let _ = ws
-            .close()
+        info!("aborted!");
+
+        let _ = ws.close().await;
+        info!("websockets closed");
+        let _ = child
+            .kill()
             .await
             .inspect_err(|e| info!("websocket error: {e:?}"));
-        let _ = child
-            .start_kill()
-            .inspect_err(|e| info!("websocket error: {e:?}"));
+        info!("child ended")
     })
 }
