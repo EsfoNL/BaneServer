@@ -319,7 +319,7 @@ pub async fn websocket_scripts(
     axum::extract::State(state): axum::extract::State<Arc<State>>,
     ws: axum::extract::WebSocketUpgrade,
 ) -> axum::response::Response {
-    info!("ws called: {path}");
+    debug!("ws called: {path}");
     let Some(path) = get_path_under_dir(&state.args.scripts_path, &path) else {
         return http::StatusCode::NOT_FOUND.into_response();
     };
@@ -362,14 +362,14 @@ pub async fn websocket_scripts(
             }
         }
 
-        info!("aborted!");
+        debug!("aborted!");
 
         let _ = ws.close().await;
-        info!("websockets closed");
+        debug!("websockets closed");
         let _ = child
             .kill()
             .await
-            .inspect_err(|e| info!("websocket error: {e:?}"));
-        info!("child ended")
+            .inspect_err(|e| debug!("websocket error: {e:?}"));
+        debug!("child ended")
     })
 }
