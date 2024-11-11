@@ -11,7 +11,7 @@ async-trait = "0.1.72"
 axum = { version = "0.7.5", features = ["tracing", "ws"] }
 clap = { version = "4.0.32", features = ["derive"] }
 console-subscriber = "0.4.0"
-dashmap = "5.4.0"
+dashmap = "6.1.0"
 either = "1.8.1"
 futures = "0.3.30"
 http = "1.1.0"
