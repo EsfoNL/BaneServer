@@ -73,7 +73,7 @@
     {% set files = files(path = path, sort = sort, rev = rev, filter = filter_v) %}
     {% set cum_size = 0 %}
     {% for file in files %}
-        {% set cum_size = cum_size + file.size %}
+        {% set_global cum_size = cum_size + file.size %}
     {% endfor %}
     <h1>
     Path: /{{path}}, Size: {{cum_size | filesizeformat}}
