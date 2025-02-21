@@ -70,6 +70,7 @@
     {% set rev = query.rev | default(value = "false") %}
     {% set filter_v = query.filter | default(value = "") %}
     {% set rev = rev == "true" %}
+    {% set files = files(path = path, sort = sort, rev = rev, filter = filter_v) %}
     {% set cum_size = 0 %}
     {% for file in files %}
         {% set cum_size = cum_size + file.size %}
@@ -81,7 +82,6 @@
         <input id="filter" type="text" value="{{filter_v}}"></input>
         <input type="submit" hidden />
     </form>
-    {% set files = files(path = path, sort = sort, rev = rev, filter = filter_v) %}
     {% macro file(data) %}
         {% if data.is_file %}
             {% set href = pub_file_prefix ~ data.path %}
