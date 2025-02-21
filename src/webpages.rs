@@ -5,10 +5,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use futures::{SinkExt, StreamExt, TryStreamExt};
-use http::{response::Parts, HeaderValue, StatusCode};
+use http::{response::Parts, HeaderMap, HeaderValue, StatusCode};
 use reqwest::Request;
 use std::{
     borrow::{Borrow, BorrowMut},
+    cell::Cell,
     collections::HashMap,
     ops::{Deref, DerefMut},
     os::unix::{fs::MetadataExt, process::CommandExt},
@@ -20,6 +21,14 @@ use tera::Tera;
 use tokio::io::AsyncReadExt;
 use tracing::info_span;
 
+struct TeraContext {
+    response_headers: HeaderMap,
+}
+
+thread_local! {
+    static TERA_CTX: Cell<Option<TeraContext>> = const { Cell::new(None) };
+}
+
 pub fn tera(cli: &Cli) -> Result<tera::Tera, tera::Error> {
     match Tera::new(&format!("{}/**", cli.template_dir)) {
         Ok(mut tera) => {
@@ -27,6 +36,7 @@ pub fn tera(cli: &Cli) -> Result<tera::Tera, tera::Error> {
             tera.register_function("sh", shell_command);
             tera.register_function("files", files(cli));
             tera.register_function("obj", obj);
+            tera.register_function("cors", cors);
             tera.register_tester("pub_root", is_pub_root(cli));
             info!(
                 "loaded terra templates: {:#?}",
@@ -36,6 +46,26 @@ pub fn tera(cli: &Cli) -> Result<tera::Tera, tera::Error> {
         }
         Err(e) => Err(e),
     }
+}
+
+fn cors(args: &HashMap<String, tera::Value>) -> tera::Result<tera::Value> {
+    if let Some(val) = args.get("orgs").and_then(tera::Value::as_array) {
+        let mut response_headers = HeaderMap::new();
+        response_headers.insert(
+            "Access-Control-Allow-Origin",
+            HeaderValue::from_str(&val.iter().filter_map(tera::Value::as_str).fold(
+                String::new(),
+                |mut acc, v| {
+                    acc.push_str(v);
+                    acc.push_str(", ");
+                    acc
+                },
+            ))
+            .unwrap(),
+        );
+        TERA_CTX.set(Some(TeraContext { response_headers }));
+    }
+    Ok(tera::Value::Null)
 }
 
 fn obj(args: &HashMap<String, tera::Value>) -> tera::Result<tera::Value> {
@@ -54,7 +84,7 @@ pub async fn webpages_handler(
     Query(query): Query<HashMap<String, String>>,
     axum::extract::State(state): axum::extract::State<Arc<State>>,
 ) -> axum::response::Response {
-    if let Some(lock) = state.tera.read().await.as_ref() {
+    if let Some(lock) = state.tera.write().await.as_mut() {
         let mut cont = state.context.clone();
         if let Some(path) = query.get("path") {
             let Some(base_path) = state.args.pub_dir.clone() else {
@@ -98,7 +128,11 @@ pub async fn webpages_handler(
         ) {
             Ok(e) => {
                 debug!("tera matched: {}", &path);
-                return axum::response::Response::new(axum::body::Body::from(e.into_bytes()));
+                let mut res = axum::response::Response::new(axum::body::Body::from(e.into_bytes()));
+                if let Some(TeraContext { response_headers }) = TERA_CTX.take() {
+                    res.headers_mut().extend(response_headers);
+                }
+                return res;
             }
             Err(e) => {
                 error!("terra error: {e:?}");

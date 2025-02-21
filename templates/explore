@@ -13,6 +13,23 @@
                 width: 100%;
                 height: 100%;
             }
+            body {
+                background: black;
+                color: yellow;
+            }
+            .icon * {
+                fill: white !important
+            }
+
+            a:visited {
+                color: green
+            }
+            a {
+                color: rgb(0 255 0)
+            }
+
+            .size {
+            }
         </style>
         {% raw %}
         <script>
@@ -32,6 +49,8 @@
         {% endraw %}
     </head>
     <body>
+
+    {% set _ = cors(orgs=["*"]) %}
     {% set path = query.path | default(value = "") %}
     {% set sort = query.sort | default(value = "") %}
     {% set rev = query.rev | default(value = "false") %}
@@ -44,16 +63,21 @@
     {% macro file(data) %}
             {% if data.isFile %}
                 {% set href = pub_file_prefix ~ data.path %}
-                {% set icon = "/static/file-solid.svg" %}
+                 
             {% else %}
                 {% set href = "?path=" ~ data.path %}
-                {% set icon = "/static/folder-solid.svg" %}
             {% endif %}
         
             <tr>
-                <td> <img src="{{icon}}" class="icon"></img> </td>
+                <td class="icon">
+                {% if data.isFile %}
+                {% include "file-solid.svg" %}
+                {% else %}
+                {% include "folder-solid.svg" %}
+                {% endif %}
+                </td>
                 <td> <a href="{{href}}">{{data.filename}}</a> </td>
-                <td>{{data.size | filesizeformat}}</td>
+                <td style="color: hsl(calc(log({{data.size}}) / log(2) * 10), 100%, 50%)" class="size" data-size="{{data.size}}">{{data.size | filesizeformat}}</td>
                 <td>{{data.atime | date(format="%Y-%m-%d %H:%M:%S")}}</td>
             </tr>
     {% endmacro file %}
