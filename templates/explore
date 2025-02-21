@@ -43,7 +43,7 @@
                 {% set icon = "/static/file-solid.svg" %}
             {% else %}
                 {% set href = "?path=" ~ data.path %}
-                {% set icon = "/static/file-solid.svg" %}
+                {% set icon = "/static/folder-solid.svg" %}
             {% endif %}
         
             <tr>
