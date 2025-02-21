@@ -6,8 +6,8 @@ use reqwest::Client;
 use std::fmt::Debug;
 use tera::Tera;
 use tokio::sync::RwLock;
-use tracing_subscriber::prelude::*;
 #[derive(Debug)]
+#[allow(unused)]
 pub struct State {
     pub db: Db,
     pub args: Cli,

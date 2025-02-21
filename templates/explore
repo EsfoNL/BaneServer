@@ -46,6 +46,19 @@
                 }
                 loc.search = params.toString();
             }
+
+            
+
+            function submit(ev) {
+                console.log(ev);
+                ev.preventDefault();
+                let loc = window.location;
+                let params = new URLSearchParams(loc.search);
+                params.set('filter', filter.value)
+                loc.search = params.toString();
+            }
+
+            addEventListener("submit", submit);
         </script>
         {% endraw %}
     </head>
@@ -55,32 +68,35 @@
     {% set path = query.path | default(value = "") %}
     {% set sort = query.sort | default(value = "") %}
     {% set rev = query.rev | default(value = "false") %}
+    {% set filter_v = query.filter | default(value = "") %}
     {% set rev = rev == "true" %}
     <h1>
     Path: /{{path}}
     </h1>
-    {% set files = files(path = path, sort = sort, rev = rev) %}
-
+    Filter: <form>
+        <input id="filter" type="text" value="{{filter_v}}"></input>
+        <input type="submit" hidden />
+    </form>
+    {% set files = files(path = path, sort = sort, rev = rev, filter = filter_v) %}
     {% macro file(data) %}
-            {% if data.isFile %}
-                {% set href = pub_file_prefix ~ data.path %}
-                 
+        {% if data.is_file %}
+            {% set href = pub_file_prefix ~ data.path %}
+        {% else %}
+            {% set href = "?path=" ~ data.path %}
+        {% endif %}
+    
+        <tr>
+            <td class="icon">
+            {% if data.is_file %}
+            {% include "file-solid.svg" %}
             {% else %}
-                {% set href = "?path=" ~ data.path %}
+            {% include "folder-solid.svg" %}
             {% endif %}
-        
-            <tr>
-                <td class="icon">
-                {% if data.isFile %}
-                {% include "file-solid.svg" %}
-                {% else %}
-                {% include "folder-solid.svg" %}
-                {% endif %}
-                </td>
-                <td> <a href="{{href}}">{{data.filename}}</a> </td>
-                <td style="color: hsl(calc(log({{data.size}}) / log(2) * 10), 100%, 50%)" class="size" data-size="{{data.size}}">{{data.size | filesizeformat}}</td>
-                <td>{{data.atime | date(format="%Y-%m-%d %H:%M:%S")}}</td>
-            </tr>
+            </td>
+            <td> <a href="{{href}}">{{data.filename}}</a> </td>
+            <td style="color: hsl(calc(log({{data.size}}) / log(2) * 10), 100%, 50%)" class="size" data-size="{{data.size}}">{{data.size | filesizeformat}}</td>
+            <td>{{data.atime | date(format="%Y-%m-%d %H:%M:%S")}}</td>
+        </tr>
     {% endmacro file %}
     <table>
         <tr>
@@ -96,10 +112,10 @@
         {% if path is not pub_root %}
             {{ self::file(data = obj(filename = "..", isFile = false, path = path ~ "/..", size = 0, atime = 0)) }}
         {% endif %}
-        {% for file in files | filter(attribute="isFile", value = false) %}
+        {% for file in files | filter(attribute="is_file", value = false) %}
             {{ self::file(data = file) }}
         {% endfor %}
-        {% for file in files | filter(attribute="isFile", value = true) %}
+        {% for file in files | filter(attribute="is_file", value = true) %}
             {{ self::file(data = file) }}
         {% endfor %}
     </table>

@@ -1,22 +1,11 @@
 use crate::prelude::*;
 use axum::{
-    body::Bytes,
-    extract::{ws::Message, FromRequest, Path, Query},
-    response::{IntoResponse, Response},
+    extract::{ws::Message, Path, Query},
+    response::IntoResponse,
 };
-use futures::{SinkExt, StreamExt, TryStreamExt};
-use http::{response::Parts, HeaderMap, HeaderValue, StatusCode};
-use reqwest::Request;
-use std::{
-    borrow::{Borrow, BorrowMut},
-    cell::Cell,
-    collections::HashMap,
-    ops::{Deref, DerefMut},
-    os::unix::{fs::MetadataExt, process::CommandExt},
-    path::PathBuf,
-    process::Command,
-    time::Duration,
-};
+use http::{HeaderMap, HeaderValue};
+use regex::Regex;
+use std::{cell::Cell, collections::HashMap, os::unix::fs::MetadataExt, path::PathBuf};
 use tera::Tera;
 use tokio::io::AsyncReadExt;
 use tracing::info_span;
@@ -92,7 +81,7 @@ pub async fn webpages_handler(
             };
             let mut actual_base_path = std::env::current_dir().unwrap();
             actual_base_path.push(&base_path);
-            let Ok(mut canon_base_path) = base_path.canonicalize() else {
+            let Ok(canon_base_path) = base_path.canonicalize() else {
                 error!("invalid pub dir: {base_path:#?}");
                 return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
             };
@@ -111,7 +100,7 @@ pub async fn webpages_handler(
                     .status(http::StatusCode::FOUND)
                     .header(
                         "Location",
-                        format!("?path={}", server_path.to_string_lossy().to_string()),
+                        format!("?path={}", server_path.to_string_lossy()),
                     )
                     .body(axum::body::Body::empty())
                     .unwrap();
@@ -234,8 +223,16 @@ fn is_pub_root(cli: &Cli) -> TeraBoxedTester {
 type TeraBoxedFn =
     Box<dyn Sync + Send + Fn(&HashMap<String, tera::Value>) -> Result<tera::Value, tera::Error>>;
 
+#[derive(serde::Serialize)]
+struct FileInfo {
+    filename: String,
+    path: String,
+    is_file: bool,
+    size: u64,
+    atime: i64,
+}
+
 fn files(cli: &Cli) -> TeraBoxedFn {
-    info!("help!");
     let mut path = std::env::current_dir().unwrap();
     let Some(add_path) = cli.pub_dir.as_ref().map(std::path::PathBuf::from) else {
         return Box::new(|_| {
@@ -244,7 +241,7 @@ fn files(cli: &Cli) -> TeraBoxedFn {
         });
     };
     path.push(add_path);
-    info!("pub dir absolute path: {path:?}");
+    // info!("pub dir absolute path: {path:?}");
 
     Box::new(move |args: &HashMap<String, tera::Value>| {
         info_span!("files").in_scope(|| {
@@ -255,7 +252,7 @@ fn files(cli: &Cli) -> TeraBoxedFn {
 
             new_path = new_path
                 .canonicalize()
-                .map_err(|e| tera::Error::msg(format!("not a valid path: {new_path:#?}")))?;
+                .map_err(|_| tera::Error::msg(format!("not a valid path: {new_path:#?}")))?;
             if !new_path.starts_with(&path) {
                 return Err(tera::Error::msg(format!("not a valid path: {new_path:#?}")));
             };
@@ -274,55 +271,31 @@ fn files(cli: &Cli) -> TeraBoxedFn {
                         e,
                     )
                 })
-                .map(|(res_path, v)| {
-                    let mut map = tera::Map::new();
-                    map.insert(
-                        String::from("filename"),
-                        res_path
-                            .file_name()
-                            .map(|e| tera::Value::String(e.to_string_lossy().to_string()))
-                            .unwrap_or(tera::Value::Null),
-                    );
-                    map.insert(
-                        String::from("path"),
-                        tera::Value::String(res_path.to_string_lossy().to_string()),
-                    );
-
-                    map.insert(
-                        String::from("isFile"),
-                        tera::Value::Bool(v.file_type().unwrap().is_file()),
-                    );
-
-                    let atime = v.metadata().unwrap().atime();
-                    map.insert(String::from("atime"), tera::Value::Number(atime.into()));
-                    let size = v.metadata().unwrap().size();
-                    map.insert(String::from("size"), tera::Value::Number(size.into()));
-                    // map.insert(
-                    //     String::from("filename"),
-                    //     res_path
-                    //         .file_name()
-                    //         .map(|e| tera::Value::String(e.to_string_lossy().to_string()))
-                    //         .unwrap_or(tera::Value::Null),
-                    // );
-                    tera::Value::Object(map)
+                .map(|(res_path, v)| FileInfo {
+                    filename: v.file_name().into_string().unwrap(),
+                    is_file: v.file_type().unwrap().is_file(),
+                    size: v.metadata().unwrap().size(),
+                    atime: v.metadata().unwrap().atime(),
+                    path: res_path.to_string_lossy().into_owned(),
                 })
                 .collect::<Vec<_>>();
             if let Some(option) = args.get("sort").and_then(|e| e.as_str()) {
                 match option {
-                    "atime" => {
-                        res.sort_unstable_by_key(|e| e.get("atime").unwrap().as_i64().unwrap())
-                    }
-                    "size" => {
-                        res.sort_unstable_by_key(|e| e.get("size").unwrap().as_u64().unwrap())
-                    }
+                    "atime" => res.sort_unstable_by_key(|e| e.atime),
+                    "size" => res.sort_unstable_by_key(|e| e.size),
                     _ => (),
                 }
             }
             if let Some(true) = args.get("rev").and_then(tera::Value::as_bool) {
-                info!("reversed!");
+                // info!("reversed!");
                 res.reverse();
             }
-            Ok(tera::Value::Array(res))
+
+            if let Some(ext) = args.get("filter").and_then(tera::Value::as_str) {
+                let re = Regex::new(ext).unwrap();
+                res.retain(|e| re.is_match(&e.filename));
+            }
+            tera::to_value(res).map_err(|e| e.into())
         })
     })
 }
