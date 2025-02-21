@@ -73,7 +73,7 @@
     <h1>
     Path: /{{path}}
     </h1>
-    Filter: <form>
+    Filter (regex): <form>
         <input id="filter" type="text" value="{{filter_v}}"></input>
         <input type="submit" hidden />
     </form>
