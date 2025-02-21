@@ -18,12 +18,22 @@
       
     </style>
     <script>
+      var bottom = true;
+      addEventListener("scroll", (event) => {
+        bottom = Math.ceil(window.innerHeight + window.scrollY) >= document.body.offsetHeight;
+      })
       addEventListener("DOMContentLoaded", (event) => {
         let onmsg = (m) => {
-          let bottom = Math.ceil(window.innerHeight + window.scrollY) >= document.body.offsetHeight - 1;;
-          logs.innerText += m.data;
+          logs.textContent += m.data;
+          console.log(logs.textContent.length);
+          if (logs.textContent.length > 50000) {
+            console.log("cull!");
+            logs.textContent = logs.textContent.slice(-25000);
+          }
           if (bottom) {
-            logs.scrollIntoView(false);
+            document.documentElement.scrollTop = document.documentElement.scrollHeight;
+            <!-- document.scroll(document.innerheight); -->
+            <!-- logs.scrollIntoView(false); -->
           }
         };
         let oncls = () =>

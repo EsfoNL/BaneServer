@@ -11,7 +11,7 @@ use std::{
     borrow::{Borrow, BorrowMut},
     collections::HashMap,
     ops::{Deref, DerefMut},
-    os::unix::process::CommandExt,
+    os::unix::{fs::MetadataExt, process::CommandExt},
     path::PathBuf,
     process::Command,
     time::Duration,
@@ -26,6 +26,7 @@ pub fn tera(cli: &Cli) -> Result<tera::Tera, tera::Error> {
             tera.register_function("command", command);
             tera.register_function("sh", shell_command);
             tera.register_function("files", files(cli));
+            tera.register_function("obj", obj);
             tera.register_tester("pub_root", is_pub_root(cli));
             info!(
                 "loaded terra templates: {:#?}",
@@ -35,6 +36,10 @@ pub fn tera(cli: &Cli) -> Result<tera::Tera, tera::Error> {
         }
         Err(e) => Err(e),
     }
+}
+
+fn obj(args: &HashMap<String, tera::Value>) -> tera::Result<tera::Value> {
+    Ok(tera::Value::Object(args.clone().drain().collect()))
 }
 
 pub fn tera_context(cli: &Cli) -> tera::Context {
@@ -220,7 +225,7 @@ fn files(cli: &Cli) -> TeraBoxedFn {
             if !new_path.starts_with(&path) {
                 return Err(tera::Error::msg(format!("not a valid path: {new_path:#?}")));
             };
-            let res = std::fs::read_dir(&new_path)
+            let mut res = std::fs::read_dir(&new_path)
                 .map_err(|_| tera::Error::msg(format!("not a valid path: {new_path:#?}")))?
                 .filter_map(Result::ok)
                 .map(|e| {
@@ -253,6 +258,11 @@ fn files(cli: &Cli) -> TeraBoxedFn {
                         String::from("isFile"),
                         tera::Value::Bool(v.file_type().unwrap().is_file()),
                     );
+
+                    let atime = v.metadata().unwrap().atime();
+                    map.insert(String::from("atime"), tera::Value::Number(atime.into()));
+                    let size = v.metadata().unwrap().size();
+                    map.insert(String::from("size"), tera::Value::Number(size.into()));
                     // map.insert(
                     //     String::from("filename"),
                     //     res_path
@@ -263,6 +273,21 @@ fn files(cli: &Cli) -> TeraBoxedFn {
                     tera::Value::Object(map)
                 })
                 .collect::<Vec<_>>();
+            if let Some(option) = args.get("sort").and_then(|e| e.as_str()) {
+                match option {
+                    "atime" => {
+                        res.sort_unstable_by_key(|e| e.get("atime").unwrap().as_i64().unwrap())
+                    }
+                    "size" => {
+                        res.sort_unstable_by_key(|e| e.get("size").unwrap().as_u64().unwrap())
+                    }
+                    _ => (),
+                }
+            }
+            if let Some(true) = args.get("rev").and_then(tera::Value::as_bool) {
+                info!("reversed!");
+                res.reverse();
+            }
             Ok(tera::Value::Array(res))
         })
     })

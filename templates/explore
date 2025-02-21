@@ -10,41 +10,69 @@
                 height: 20px;
             }
         </style>
+        {% raw %}
+        <script>
+            function sort(el) {
+                let loc = window.location;
+                let params = new URLSearchParams(loc.search);
+                
+                if (params.get('sort') == el.id) {
+                    params.set('rev', !((params.get('rev') ?? "false") === "true"));
+                } else {
+                    params.delete('rev');
+                    params.set('sort', el.id);
+                }
+                loc.search = params.toString();
+            }
+        </script>
+        {% endraw %}
     </head>
     <body>
+    {% set path = query.path | default(value = "") %}
+    {% set sort = query.sort | default(value = "") %}
+    {% set rev = query.rev | default(value = "false") %}
+    {% set rev = rev == "true" %}
     <h1>
-    Path: /{% if query.path %}{{query.path}}{% endif %}
+    Path: /{{path}}
     </h1>
-    {% if query.path %}
-        {% set files = files(path = query.path) %}
-    {% else %}
-        {% set files = files() %}
-    {% endif %}
-    <ul>
-        {% if query.path is not pub_root %}
-            <li>
-                <img src="/static/folder-solid.svg" class="icon"></img>
-                <a href="?path={{query.path}}/..">..</a>
-            </li>
+    {% set files = files(path = path, sort = sort, rev = rev) %}
+
+    {% macro file(data) %}
+            {% if data.isFile %}
+                {% set href = pub_file_prefix ~ data.path %}
+                {% set icon = "/static/file-solid.svg" %}
+            {% else %}
+                {% set href = "?path=" ~ data.path %}
+                {% set icon = "/static/file-solid.svg" %}
+            {% endif %}
+        
+            <tr>
+                <td> <img src="{{icon}}" class="icon"></img> </td>
+                <td> <a href="{{href}}">{{data.filename}}</a> </td>
+                <td>{{data.size | filesizeformat}}</td>
+                <td>{{data.atime | date(format="%Y-%m-%d %H:%M:%S")}}</td>
+            </tr>
+    {% endmacro file %}
+    <table>
+        <tr>
+            <th></th>
+            {% for header in [
+                obj(id="name", name="Name"),
+                obj(id="size", name="Size"),
+                obj(id="atime", name="Last accessed"),    
+            ] %}
+                <th><button id="{{header.id}}" onClick="sort(this)">{{header.name}}{% if header.id == sort %}{% if rev %}&uarr;{% else %}&darr;{% endif %}{% endif %}</button></th>
+            {% endfor %}
+        </tr>
+        {% if path is not pub_root %}
+            {{ self::file(data = obj(filename = "..", isFile = false, path = path ~ "/..", size = 0, atime = 0)) }}
         {% endif %}
         {% for file in files | filter(attribute="isFile", value = false) %}
-            {% set path = "?path=" ~ file.path %}
-            <li>
-                <img src="/static/folder-solid.svg" class="icon"></img>
-                <a href="{{path}}" data-is-file="{{file.isFile}}">
-                    {{file.filename}}
-                </a>
-            </li>
+            {{ self::file(data = file) }}
         {% endfor %}
         {% for file in files | filter(attribute="isFile", value = true) %}
-            {% set path = pub_file_prefix ~ '/' ~ file.path %}
-            <li>
-                <img src="/static/file-solid.svg" class="icon"></img>
-                <a href="{{path}}" data-is-file="{{file.isFile}}">
-                    {{file.filename}}
-                </a>
-            </li>
+            {{ self::file(data = file) }}
         {% endfor %}
-    </ul>
+    </table>
     </body>
 </html>
