@@ -76,7 +76,7 @@
         {% set cum_size = cum_size + file.size %}
     {% endfor %}
     <h1>
-    Path: /{{path}}, Size: {{cum_size | file_size}}
+    Path: /{{path}}, Size: {{cum_size | filesizeformat}}
     </h1>
     Filter (regex): <form>
         <input id="filter" type="text" value="{{filter_v}}"></input>
