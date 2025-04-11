@@ -2,7 +2,6 @@ use crate::prelude::*;
 
 use futures::channel::mpsc::Sender;
 use notify::INotifyWatcher;
-use reqwest::Client;
 use std::fmt::Debug;
 use tera::Tera;
 use tokio::sync::RwLock;
@@ -11,7 +10,6 @@ use tokio::sync::RwLock;
 pub struct State {
     pub db: Db,
     pub args: Cli,
-    pub reqwest_client: Client,
     pub subscribers: dashmap::DashMap<Id, Sender<MessageType>>,
     pub filestreams:
         dashmap::DashMap<uuid::Uuid, tokio::sync::oneshot::Sender<axum::extract::ws::WebSocket>>,
@@ -38,7 +36,6 @@ impl State {
             filestreams,
             tera: RwLock::new(tera.ok()),
             context,
-            reqwest_client: Client::new(),
             watcher: RwLock::new(None),
             args,
         }
