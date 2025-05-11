@@ -26,5 +26,10 @@ a {
 
 .size {
 }
+
+.kierk {
+	height: 300px;
+	margin-top: 25px;
+}
 </style>
 {% endraw %}
