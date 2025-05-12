@@ -338,11 +338,16 @@ pub async fn scripts(
     let Ok(query_json) = serde_json::to_string(&query) else {
         return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    let Ok(out) = tokio::process::Command::new(path)
+    let Ok((out, mut errout)) = tokio::process::Command::new(&path)
         .env("QUERY", query_json)
         .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .spawn()
-        .and_then(|e| e.stdout.ok_or(std::io::ErrorKind::NotFound.into()))
+        .and_then(|e| {
+            e.stdout
+                .and_then(|v| e.stderr.map(|o| (v, o)))
+                .ok_or(std::io::ErrorKind::NotFound.into())
+        })
     else {
         return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
@@ -351,6 +356,12 @@ pub async fn scripts(
     //     "Content-Type",
     //     HeaderValue::from_static("text/plain; charset=UTF-8"),
     // );
+    tokio::spawn(async move {
+        let mut buf = [0; 256];
+        while let Ok(v) = errout.read(&mut buf).await {
+            info!("{path:?} stderr: {}", String::from_utf8_lossy(&buf[0..v]));
+        }
+    });
     axum::response::Response::new(axum::body::Body::from_stream(
         tokio_util::io::ReaderStream::new(out),
     ))
