@@ -26,6 +26,7 @@ pub fn tera(cli: &Cli) -> Result<tera::Tera, tera::Error> {
             tera.register_function("files", files(cli));
             tera.register_function("obj", obj);
             tera.register_function("cors", cors);
+            tera.register_filter("ansi_to_html", ansi_to_html);
             tera.register_tester("pub_root", is_pub_root(cli));
             info!(
                 "loaded terra templates: {:#?}",
@@ -35,6 +36,18 @@ pub fn tera(cli: &Cli) -> Result<tera::Tera, tera::Error> {
         }
         Err(e) => Err(e),
     }
+}
+
+fn ansi_to_html(
+    value: &tera::Value,
+    _: &HashMap<String, tera::Value>,
+) -> tera::Result<tera::Value> {
+    ansi_to_html::convert(value.as_str().ok_or(tera::Error::call_filter(
+        String::from("invalid argument to filter"),
+        "invalid arg",
+    ))?)
+    .map_err(|e| tera::Error::call_filter(String::from("failed to convert from ansi to html"), e))
+    .map(tera::Value::String)
 }
 
 fn cors(args: &HashMap<String, tera::Value>) -> tera::Result<tera::Value> {
