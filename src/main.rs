@@ -178,7 +178,8 @@ fn signal_handler(state: Arc<State>) -> notify::INotifyWatcher {
                     match lock.as_mut().map(|e| e.full_reload()) {
                         Some(Err(e)) => error!("terra error: {}", e),
                         Some(Ok(_)) => info!(
-                            "terra reload: {:#?}",
+                            "terra reload: reason: {:#?}\n{:#?}",
+                            res.unwrap(),
                             lock.as_mut()
                                 .unwrap()
                                 .get_template_names()
