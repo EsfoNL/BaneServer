@@ -1,5 +1,5 @@
 server_host = "::"
-http_port = 3000
+http_port = 8000
 log_level = "DEBUG"
 pub_dir = "pub_dir"
 static_dir = "static"

@@ -1,7 +1,7 @@
 use axum::{routing::get, Router};
 use clap::Parser;
 
-use notify::Watcher;
+use notify::{Config, Watcher};
 #[allow(unused)]
 mod api;
 mod cli;
@@ -171,32 +171,35 @@ async fn main() {
 fn signal_handler(state: Arc<State>) -> notify::INotifyWatcher {
     let mut watcher = {
         let state = state.clone();
-        notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| {
-            if res.is_ok() {
-                let mut lock = state.tera.blocking_write();
-                match lock.as_mut().map(|e| e.full_reload()) {
-                    Some(Err(e)) => error!("terra error: {}", e),
-                    Some(Ok(_)) => info!(
-                        "terra reload: {:#?}",
-                        lock.as_mut()
-                            .unwrap()
-                            .get_template_names()
-                            .collect::<Vec<_>>()
-                    ),
-                    _ => {
-                        *lock = {
-                            match webpages::tera(&state.args) {
-                                Err(e) => {
-                                    error!("Tera error: {e}");
-                                    None
+        notify::INotifyWatcher::new(
+            move |res: Result<notify::Event, notify::Error>| {
+                if res.is_ok() {
+                    let mut lock = state.tera.blocking_write();
+                    match lock.as_mut().map(|e| e.full_reload()) {
+                        Some(Err(e)) => error!("terra error: {}", e),
+                        Some(Ok(_)) => info!(
+                            "terra reload: {:#?}",
+                            lock.as_mut()
+                                .unwrap()
+                                .get_template_names()
+                                .collect::<Vec<_>>()
+                        ),
+                        _ => {
+                            *lock = {
+                                match webpages::tera(&state.args) {
+                                    Err(e) => {
+                                        error!("Tera error: {e}");
+                                        None
+                                    }
+                                    e => e.ok(),
                                 }
-                                e => e.ok(),
                             }
                         }
-                    }
-                };
-            }
-        })
+                    };
+                }
+            },
+            Config::default().with_follow_symlinks(true),
+        )
         .unwrap()
     };
     let _ = watcher.watch(
