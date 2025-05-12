@@ -358,7 +358,7 @@ pub async fn scripts(
     // );
     tokio::spawn(async move {
         let mut buf = [0; 256];
-        while let Ok(v) = errout.read(&mut buf).await {
+        while let Ok(v @ 1..) = errout.read(&mut buf).await {
             info!("{path:?} stderr: {}", String::from_utf8_lossy(&buf[0..v]));
         }
     });
