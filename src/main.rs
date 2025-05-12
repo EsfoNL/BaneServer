@@ -1,7 +1,7 @@
 use axum::{routing::get, Router};
 use clap::Parser;
 
-use notify::{Config, Watcher};
+use notify::{Config, Event, EventKind, Watcher};
 #[allow(unused)]
 mod api;
 mod cli;
@@ -174,12 +174,20 @@ fn signal_handler(state: Arc<State>) -> notify::INotifyWatcher {
         notify::INotifyWatcher::new(
             move |res: Result<notify::Event, notify::Error>| {
                 if res.is_ok() {
+                    let ev = res.unwrap();
+                    if let Event {
+                        kind: EventKind::Access(_) | EventKind::Any | EventKind::Other,
+                        ..
+                    } = ev
+                    {
+                        return;
+                    }
                     let mut lock = state.tera.blocking_write();
                     match lock.as_mut().map(|e| e.full_reload()) {
                         Some(Err(e)) => error!("terra error: {}", e),
                         Some(Ok(_)) => info!(
                             "terra reload: reason: {:#?}\n{:#?}",
-                            res.unwrap(),
+                            ev,
                             lock.as_mut()
                                 .unwrap()
                                 .get_template_names()
