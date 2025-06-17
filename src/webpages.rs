@@ -1,7 +1,8 @@
 use crate::prelude::*;
 use axum::{
+    body::Body,
     extract::{ws::Message, Path, Query},
-    response::IntoResponse,
+    response::{IntoResponse, Response},
 };
 use http::{HeaderMap, HeaderValue};
 use regex::Regex;
@@ -428,4 +429,33 @@ pub async fn websocket_scripts(
             .inspect_err(|e| debug!("websocket error: {e:?}"));
         debug!("child ended")
     })
+}
+
+pub async fn file_scripts(
+    Path(path): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+    axum::extract::State(state): axum::extract::State<Arc<State>>,
+) -> Result<axum::response::Response, http::StatusCode> {
+    let Some(path) = get_path_under_dir(&state.args.scripts_path, &path) else {
+        return Err(http::StatusCode::NOT_FOUND);
+    };
+
+    let Ok(query_json) = serde_json::to_string(&query) else {
+        return Err(http::StatusCode::INTERNAL_SERVER_ERROR);
+    };
+
+    let Ok(mut child) = tokio::process::Command::new(path)
+        .env("QUERY", query_json)
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+    else {
+        return Err(http::StatusCode::INTERNAL_SERVER_ERROR);
+    };
+
+    axum::response::Response::builder()
+        .header(http::header::CONTENT_TYPE, "application/octet-stream")
+        .body(Body::from_stream(tokio_util::io::ReaderStream::new(
+            child.stdout.take().unwrap(),
+        )))
+        .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)
 }

@@ -137,6 +137,7 @@ async fn main() {
             }),
         )
         .route("/script/websocket/*path", get(webpages::websocket_scripts))
+        .route("/script/file/*path", get(webpages::file_scripts))
         .route("/script/*path", get(webpages::scripts))
         .route("/*path", get(webpages::webpages_handler))
         .route("/api/filestream", get(api::filestream::filestream_handler))
