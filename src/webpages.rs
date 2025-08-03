@@ -2,21 +2,24 @@ use crate::prelude::*;
 use axum::{
     body::Body,
     extract::{ws::Message, Path, Query},
-    response::{IntoResponse, Response},
+    response::IntoResponse,
 };
-use http::{HeaderMap, HeaderValue};
+use http::{HeaderMap, HeaderName, HeaderValue};
 use regex::Regex;
-use std::{cell::Cell, collections::HashMap, os::unix::fs::MetadataExt, path::PathBuf};
+use std::{
+    cell::RefCell, collections::HashMap, os::unix::fs::MetadataExt, path::PathBuf, str::FromStr,
+};
 use tera::Tera;
 use tokio::io::AsyncReadExt;
 use tracing::info_span;
 
+#[derive(Default)]
 struct TeraContext {
     response_headers: HeaderMap,
 }
 
 thread_local! {
-    static TERA_CTX: Cell<Option<TeraContext>> = const { Cell::new(None) };
+    static TERA_CTX: RefCell<TeraContext> = RefCell::new(TeraContext::default());
 }
 
 pub fn tera(cli: &Cli) -> Result<tera::Tera, tera::Error> {
@@ -27,6 +30,7 @@ pub fn tera(cli: &Cli) -> Result<tera::Tera, tera::Error> {
             tera.register_function("files", files(cli));
             tera.register_function("obj", obj);
             tera.register_function("cors", cors);
+            tera.register_function("headers", headers);
             tera.register_filter("ansi_to_html", ansi_to_html);
             tera.register_tester("pub_root", is_pub_root(cli));
             info!(
@@ -51,24 +55,50 @@ fn ansi_to_html(
     .map(tera::Value::String)
 }
 
+fn headers(args: &HashMap<String, tera::Value>) -> tera::Result<tera::Value> {
+    TERA_CTX.with_borrow_mut(|ctx| {
+        debug!("here!");
+        for (key, val) in args
+            .iter()
+            .map(|(a, b)| (a, b.as_str().ok_or(tera::Error::msg("wrong value"))))
+        {
+            let val = val?;
+            let key: String = key
+                .chars()
+                .map(|e| match e {
+                    '_' => '-',
+                    e => e,
+                })
+                .collect();
+            debug!("inserting {key}: {val} into headers");
+            ctx.response_headers.insert(
+                HeaderName::from_str(key.as_str()).map_err(|e| e.to_string())?,
+                HeaderValue::from_str(val).map_err(|e| e.to_string())?,
+            );
+        }
+        Ok(tera::Value::Null)
+    })
+}
+
 fn cors(args: &HashMap<String, tera::Value>) -> tera::Result<tera::Value> {
-    if let Some(val) = args.get("orgs").and_then(tera::Value::as_array) {
-        let mut response_headers = HeaderMap::new();
-        response_headers.insert(
-            "Access-Control-Allow-Origin",
-            HeaderValue::from_str(&val.iter().filter_map(tera::Value::as_str).fold(
-                String::new(),
-                |mut acc, v| {
-                    acc.push_str(v);
-                    acc.push_str(", ");
-                    acc
-                },
-            ))
-            .unwrap(),
-        );
-        TERA_CTX.set(Some(TeraContext { response_headers }));
-    }
-    Ok(tera::Value::Null)
+    TERA_CTX.with(|e| {
+        if let Some(val) = args.get("orgs").and_then(tera::Value::as_array) {
+            let response_headers = &mut e.borrow_mut().response_headers;
+            response_headers.insert(
+                "Access-Control-Allow-Origin",
+                HeaderValue::from_str(&val.iter().filter_map(tera::Value::as_str).fold(
+                    String::new(),
+                    |mut acc, v| {
+                        acc.push_str(v);
+                        acc.push_str(", ");
+                        acc
+                    },
+                ))
+                .unwrap(),
+            );
+        }
+        Ok(tera::Value::Null)
+    })
 }
 
 fn obj(args: &HashMap<String, tera::Value>) -> tera::Result<tera::Value> {
@@ -132,9 +162,10 @@ pub async fn webpages_handler(
             Ok(e) => {
                 debug!("tera matched: {}", &path);
                 let mut res = axum::response::Response::new(axum::body::Body::from(e.into_bytes()));
-                if let Some(TeraContext { response_headers }) = TERA_CTX.take() {
-                    res.headers_mut().extend(response_headers);
-                }
+                TERA_CTX.with(|e| {
+                    res.headers_mut()
+                        .extend(e.borrow_mut().response_headers.drain())
+                });
                 return res;
             }
             Err(e) => {

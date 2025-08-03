@@ -65,9 +65,9 @@
         <tr>
             <td class="icon">
             {% if data.is_file %}
-            {% include "file-solid.svg" %}
+            <img src="file-solid.svg" type="image/svg+xml"></object>
             {% else %}
-            {% include "folder-solid.svg" %}
+            <img src="folder-solid.svg" type="image/svg+xml"></object>
             {% endif %}
             </td>
             <td> <a href="{{href}}">{{data.filename}}</a> </td>
