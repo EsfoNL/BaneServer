@@ -4,16 +4,20 @@
     {% include "header" %}
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <link rel="stylesheet" media="screen" href="https://fontlibrary.org/en/face/fantasque-sans-mono" type="text/css"/> 
-    <style>
+<link rel="stylesheet" media="screen" href="https://esfokk.nl/static/Ioveska/IosevkaSlab.css" type="text/css"/>
+<style>
       body {
         background-color: black;
         color: green;
-        font-family: 'FantasqueSansMonoRegular';
+        font-family: 'Iosevka Slab Web';
       }
 
       #anchor {
         height: 2px;
+      }
+
+      #logs {
+        white-space: pre-line;
       }
       
     </style>
@@ -26,7 +30,7 @@
         let onmsg = (m) => {
           logs.textContent += m.data;
           console.log(logs.textContent.length);
-          if (logs.textContent.length > 50000) {
+          if (logs.textContent.length > 5000) {
             console.log("cull!");
             logs.textContent = logs.textContent.slice(-25000);
           }
@@ -39,7 +43,7 @@
         let oncls = () =>
         {
           setTimeout(() => {
-            ws = new WebSocket("/script/websocket/live-logs");
+            ws = new WebSocket("/script/websocket/live-logs?no-initial=true");
             ws.onmessage = onmsg;
             ws.onclose = oncls;
             console.log("reconnect");
@@ -49,6 +53,8 @@
         let ws = new WebSocket("/script/websocket/live-logs");
         ws.onmessage = onmsg;
         ws.onclose = oncls;
+
+        logs.textContent = ''; 
       });
     </script>
   </head>
