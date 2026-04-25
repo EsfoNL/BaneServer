@@ -2,12 +2,13 @@ use crate::prelude::*;
 use axum::{
     body::Body,
     extract::{ws::Message, Path, Query},
-    response::IntoResponse,
+    response::{IntoResponse, Response},
 };
-use http::{HeaderMap, HeaderName, HeaderValue};
+use http::{response::Parts, HeaderMap, HeaderName, HeaderValue, StatusCode};
 use regex::Regex;
 use std::{
-    cell::RefCell, collections::HashMap, os::unix::fs::MetadataExt, path::PathBuf, str::FromStr,
+    cell::RefCell, collections::HashMap, os::unix::fs::MetadataExt, path::PathBuf, process::Stdio,
+    str::FromStr,
 };
 use tera::Tera;
 use tokio::io::AsyncReadExt;
@@ -111,43 +112,49 @@ pub fn tera_context(cli: &Cli) -> tera::Context {
     context
 }
 
+fn explore_dir(state: &State) -> Result<PathBuf, http::StatusCode> {
+    let Some(base_path) = state.args.pub_dir.clone() else {
+        return Err(http::StatusCode::INTERNAL_SERVER_ERROR);
+    };
+    let mut actual_base_path = std::env::current_dir().unwrap();
+    actual_base_path.push(&base_path);
+    let Ok(canon_base_path) = base_path.canonicalize() else {
+        error!("invalid pub dir: {base_path:#?}");
+        return Err(http::StatusCode::INTERNAL_SERVER_ERROR);
+    };
+
+    return Ok(canon_base_path);
+}
+
 #[instrument(skip(state))]
 pub async fn webpages_handler(
     Path(path): Path<String>,
     Query(query): Query<HashMap<String, String>>,
     axum::extract::State(state): axum::extract::State<Arc<State>>,
-) -> axum::response::Response {
+) -> Result<axum::response::Response, http::StatusCode> {
     if let Some(lock) = state.tera.write().await.as_mut() {
         let mut cont = state.context.clone();
         if let Some(path) = query.get("path") {
-            let Some(base_path) = state.args.pub_dir.clone() else {
-                return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
-            };
-            let mut actual_base_path = std::env::current_dir().unwrap();
-            actual_base_path.push(&base_path);
-            let Ok(canon_base_path) = base_path.canonicalize() else {
-                error!("invalid pub dir: {base_path:#?}");
-                return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
-            };
+            let canon_base_path = explore_dir(&state)?;
             let mut full_path = canon_base_path.clone();
             full_path.push(path);
             let Ok(cannoned_path) = full_path.canonicalize() else {
                 error!("invalid path: {path:#?}");
-                return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
+                return Err(http::StatusCode::INTERNAL_SERVER_ERROR);
             };
 
             if cannoned_path != full_path {
                 let Ok(server_path) = cannoned_path.strip_prefix(&canon_base_path) else {
-                    return http::StatusCode::NOT_FOUND.into_response();
+                    return Err(http::StatusCode::NOT_FOUND);
                 };
-                return http::Response::builder()
+                return Ok(http::Response::builder()
                     .status(http::StatusCode::FOUND)
                     .header(
                         "Location",
                         format!("?path={}", server_path.to_string_lossy()),
                     )
                     .body(axum::body::Body::empty())
-                    .unwrap();
+                    .unwrap());
             };
         }
         cont.insert("query", &query);
@@ -166,17 +173,17 @@ pub async fn webpages_handler(
                     res.headers_mut()
                         .extend(e.borrow_mut().response_headers.drain())
                 });
-                return res;
+                return Ok(res);
             }
             Err(e) => {
                 error!("terra error: {e:?}");
-                return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
+                return Err(http::StatusCode::INTERNAL_SERVER_ERROR);
             }
         }
     }
 
     info!("404");
-    return http::StatusCode::NOT_FOUND.into_response();
+    return Err(http::StatusCode::NOT_FOUND);
 }
 
 /*
@@ -345,7 +352,7 @@ fn files(cli: &Cli) -> TeraBoxedFn {
     })
 }
 
-/// tries to get a path stricktly under the [base_path], else returns None
+/// tries to get a path strictly under the [base_path], else returns None
 fn get_path_under_dir(base_path: &PathBuf, path: &str) -> Option<PathBuf> {
     let mut full_path = base_path.clone();
     full_path.push(path);
@@ -489,4 +496,43 @@ pub async fn file_scripts(
             child.stdout.take().unwrap(),
         )))
         .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+pub async fn download_zip(
+    Path(path): Path<String>,
+    axum::extract::State(state): axum::extract::State<Arc<State>>,
+) -> Result<axum::response::Response, http::StatusCode> {
+    // println!("hit");
+    let pub_dir_path = explore_dir(&state)?;
+    let path_at_dir =
+        get_path_under_dir(&pub_dir_path, &path).ok_or(http::StatusCode::NOT_FOUND)?;
+
+    let mut proc = tokio::process::Command::new("zip")
+        // since the pub diris a dir it is guaranteed to have a parent path
+        .args(&["-r", "-"])
+        .arg(path_at_dir.file_name().unwrap())
+        .current_dir(path_at_dir.parent().unwrap())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let base_name = path_at_dir
+        .file_name()
+        .ok_or(http::StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Response::builder()
+        .header(http::header::CONTENT_TYPE, "application/octet-stream")
+        .header(
+            http::header::CONTENT_DISPOSITION,
+            format!(
+                "attachment; filename=\"{}.zip\"",
+                base_name.to_string_lossy()
+            ),
+        )
+        .body(Body::from_stream(tokio_util::io::ReaderStream::new(
+            proc.stdout
+                .take()
+                .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?,
+        )))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }

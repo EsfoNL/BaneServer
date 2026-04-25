@@ -14,6 +14,8 @@ mod webpages;
 use prelude::*;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+use crate::webpages::download_zip;
+
 #[tokio::main]
 async fn main() {
     let args = {
@@ -139,6 +141,7 @@ async fn main() {
         .route("/script/websocket/*path", get(webpages::websocket_scripts))
         .route("/script/file/*path", get(webpages::file_scripts))
         .route("/script/*path", get(webpages::scripts))
+        .route("/download-zip/*path", get(download_zip))
         .route("/*path", get(webpages::webpages_handler))
         .route("/api/filestream", get(api::filestream::filestream_handler))
         .route(

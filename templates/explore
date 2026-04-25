@@ -65,9 +65,9 @@
         <tr>
             <td class="icon">
             {% if data.is_file %}
-            <img src="file-solid.svg" type="image/svg+xml"></object>
+            <img src="file-solid.svg" type="image/svg+xml"></img>
             {% else %}
-            <img src="folder-solid.svg" type="image/svg+xml"></object>
+            <a href="/download-zip/{{data.path}}"><img src="folder-solid.svg" type="image/svg+xml"></img></a>
             {% endif %}
             </td>
             <td> <a href="{{href}}">{{data.filename}}</a> </td>
