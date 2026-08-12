@@ -57,5 +57,5 @@ modpack_button.onclick = uploader(modpack_button, modpack, modpack_progress, "/a
 
 const action = (act) => (() => fetch("/admin/action/" + act, {method: "POST"}))
 start.onclick = action("start");
-stop.onclick = action("stop");
+document.getElementById("stop").onclick = action("stop");
 restart.onclick = action("restart");
