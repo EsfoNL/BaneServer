@@ -1,0 +1,9 @@
+#!/bin/env nu
+let $query = $env.QUERY | from json
+
+if $env.DEV? != null {
+  ssh esfokk.nl -- journalctl (if $query.no-initial? == "true" {"-n0"} else {""}) -fu arma -o cat
+} else {
+  journalctl (if $query.no-initial? == "true" {"-n0"} else {""}) -fu arma -o cat
+}
+

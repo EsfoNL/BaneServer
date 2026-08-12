@@ -132,58 +132,58 @@ pub async fn webpages_handler(
     Query(query): Query<HashMap<String, String>>,
     axum::extract::State(state): axum::extract::State<Arc<State>>,
 ) -> Result<axum::response::Response, http::StatusCode> {
-    if let Some(lock) = state.tera.write().await.as_mut() {
-        let mut cont = state.context.clone();
-        if let Some(path) = query.get("path") {
-            let canon_base_path = explore_dir(&state)?;
-            let mut full_path = canon_base_path.clone();
-            full_path.push(path);
-            let Ok(cannoned_path) = full_path.canonicalize() else {
-                error!("invalid path: {path:#?}");
-                return Err(http::StatusCode::INTERNAL_SERVER_ERROR);
-            };
+    let mut lock = state.tera.write().await;
+    let Some(tera) = lock.as_mut() else {
+        info!("tera not loaded");
+        return Err(http::StatusCode::NOT_FOUND);
+    };
+    let mut cont = state.context.clone();
+    if let Some(path) = query.get("path") {
+        let canon_base_path = explore_dir(&state)?;
+        let mut full_path = canon_base_path.clone();
+        full_path.push(path);
+        let Ok(cannoned_path) = full_path.canonicalize() else {
+            error!("invalid path: {path:#?}");
+            return Err(http::StatusCode::INTERNAL_SERVER_ERROR);
+        };
 
-            if cannoned_path != full_path {
-                let Ok(server_path) = cannoned_path.strip_prefix(&canon_base_path) else {
-                    return Err(http::StatusCode::NOT_FOUND);
-                };
-                return Ok(http::Response::builder()
-                    .status(http::StatusCode::FOUND)
-                    .header(
-                        "Location",
-                        format!("?path={}", server_path.to_string_lossy()),
-                    )
-                    .body(axum::body::Body::empty())
-                    .unwrap());
+        if cannoned_path != full_path {
+            let Ok(server_path) = cannoned_path.strip_prefix(&canon_base_path) else {
+                return Err(http::StatusCode::NOT_FOUND);
             };
+            return Ok(http::Response::builder()
+                .status(http::StatusCode::FOUND)
+                .header(
+                    "Location",
+                    format!("?path={}", server_path.to_string_lossy()),
+                )
+                .body(axum::body::Body::empty())
+                .unwrap());
+        };
+    }
+    cont.insert("query", &query);
+    match tera.render(
+        if path.is_empty() {
+            "root.html"
+        } else {
+            path.as_str()
+        },
+        &cont,
+    ) {
+        Ok(e) => {
+            debug!("tera matched: {}", &path);
+            let mut res = axum::response::Response::new(axum::body::Body::from(e.into_bytes()));
+            TERA_CTX.with(|e| {
+                res.headers_mut()
+                    .extend(e.borrow_mut().response_headers.drain())
+            });
+            return Ok(res);
         }
-        cont.insert("query", &query);
-        match lock.render(
-            if path.is_empty() {
-                "root.html"
-            } else {
-                path.as_str()
-            },
-            &cont,
-        ) {
-            Ok(e) => {
-                debug!("tera matched: {}", &path);
-                let mut res = axum::response::Response::new(axum::body::Body::from(e.into_bytes()));
-                TERA_CTX.with(|e| {
-                    res.headers_mut()
-                        .extend(e.borrow_mut().response_headers.drain())
-                });
-                return Ok(res);
-            }
-            Err(e) => {
-                error!("terra error: {e:?}");
-                return Err(http::StatusCode::INTERNAL_SERVER_ERROR);
-            }
+        Err(e) => {
+            error!("terra error: {e:?}");
+            return Err(http::StatusCode::INTERNAL_SERVER_ERROR);
         }
     }
-
-    info!("404");
-    return Err(http::StatusCode::NOT_FOUND);
 }
 
 /*
@@ -353,8 +353,10 @@ fn files(cli: &Cli) -> TeraBoxedFn {
 }
 
 /// tries to get a path strictly under the [base_path], else returns None
-fn get_path_under_dir(base_path: &PathBuf, path: &str) -> Option<PathBuf> {
-    let mut full_path = base_path.clone();
+#[tracing::instrument]
+pub fn get_path_under_dir(base_path: &std::path::Path, path: &str) -> Option<PathBuf> {
+    let base_path = base_path.canonicalize().unwrap();
+    let mut full_path = base_path.to_owned();
     full_path.push(path);
     let Ok(full_path) = full_path.canonicalize() else {
         return None;
@@ -406,67 +408,6 @@ pub async fn scripts(
     ))
 
     // String::from_utf8_lossy().into_owned().into_response()
-}
-
-pub async fn websocket_scripts(
-    Path(path): Path<String>,
-    Query(query): Query<HashMap<String, String>>,
-    axum::extract::State(state): axum::extract::State<Arc<State>>,
-    ws: axum::extract::WebSocketUpgrade,
-) -> axum::response::Response {
-    debug!("ws called: {path}");
-    let Some(path) = get_path_under_dir(&state.args.scripts_path, &path) else {
-        return http::StatusCode::NOT_FOUND.into_response();
-    };
-    let Ok(query_json) = serde_json::to_string(&query) else {
-        return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
-    };
-
-    let Ok(mut child) = tokio::process::Command::new(path)
-        .env("QUERY", query_json)
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-    else {
-        return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
-    };
-
-    if child.stdout.is_none() {
-        return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
-    };
-
-    ws.on_upgrade(|mut ws| async move {
-        let mut out = child.stdout.take().unwrap();
-        let mut buff = [0u8; 256];
-
-        loop {
-            tokio::select! {
-                _ = ws.recv() => {
-                    break;
-                },
-                data = out.read(&mut buff) => {
-                    let Ok(l) = data else {
-                        break;
-                    };
-                    if ws.send(Message::Text(
-                        String::from_utf8_lossy(&buff[..l]).to_string()
-                    )).await.is_err() {
-                        break;
-                    };
-                }
-
-            }
-        }
-
-        debug!("aborted!");
-
-        let _ = ws.close().await;
-        debug!("websockets closed");
-        let _ = child
-            .kill()
-            .await
-            .inspect_err(|e| debug!("websocket error: {e:?}"));
-        debug!("child ended")
-    })
 }
 
 pub async fn file_scripts(
@@ -535,4 +476,13 @@ pub async fn download_zip(
                 .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?,
         )))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+pub async fn asset(Path(path): Path<String>) -> Result<Response, Response> {
+    let r404 = || Response::builder().status(404).body(().into()).unwrap();
+    info!("path: {path}");
+    let path = get_path_under_dir(&PathBuf::from("assets"), &path).ok_or_else(r404)?;
+    return Ok(Response::new(Body::from_stream(
+        tokio_util::io::ReaderStream::new(tokio::fs::File::open(&path).await.map_err(|_| r404())?),
+    )));
 }

@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Login Page</title>
+		<link rel="stylesheet" href="/asset/pico.css" type="text/css">
+	</head>
+	<body>
+		<h4></h4>
+		<form class="container" method="post" action="/admin/login" accept-encoding="UTF-8">
+			<input type="text" name="name">
+			<input type="password" name="password">
+			<input type="submit" value="Login">
+			{% if failed %}
+			Wrong name or password, try again
+			{% endif %}
+		</form>
+	</body>
+</html>

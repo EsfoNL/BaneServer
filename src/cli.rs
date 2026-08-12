@@ -55,6 +55,8 @@ impl Default for Cli {
             pub_dir: None,
             pub_file_prefix: String::new(),
             scripts_path: PathBuf::from_str("/srv/scripts").unwrap(),
+            arma_mission_dir: PathBuf::from("/home/arma/arma/mpmissions"),
+            modpack_install_script: PathBuf::from("/bin/true"),
         }
     }
 }
@@ -115,4 +117,9 @@ pub struct Cli {
 
     #[arg(long)]
     pub scripts_path: PathBuf,
+
+    #[arg(long)]
+    pub arma_mission_dir: PathBuf,
+    #[arg(long)]
+    pub modpack_install_script: PathBuf,
 }
