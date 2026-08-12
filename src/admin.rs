@@ -8,7 +8,7 @@ use std::{
 use crate::{api::filestream::file_uploader, cli::Cli, prelude::State};
 use argon2::password_hash::Salt;
 use axum::{
-    extract::{FromRequestParts, OptionalFromRequestParts, State as AState},
+    extract::{FromRequestParts, OptionalFromRequestParts, Path, State as AState},
     response::{Html, Response},
     routing::{get, post},
     Form, Router,
@@ -186,11 +186,25 @@ async fn admin(AState(state): AState<Arc<State>>, auth: AuthUser) -> Html<String
     state.pages.render("admin", &context).unwrap().into()
 }
 
+async fn action(Path(action): Path<String>, _auth: AuthUser) -> http::StatusCode {
+    if ["start", "stop", "restart"].contains(&action.as_str()) {
+        tokio::process::Command::new("systemctl")
+            .args([action.as_str(), "arma"])
+            .status()
+            .await
+            .map(|_| http::StatusCode::OK)
+            .unwrap_or(http::StatusCode::INTERNAL_SERVER_ERROR)
+    } else {
+        http::StatusCode::BAD_REQUEST
+    }
+}
+
 pub fn admin_router() -> Router<Arc<State>> {
     Router::new()
         .route("/login", get(login))
         .route("/login", post(login_post))
         .route("/", get(admin))
+        .route("/action/{*act}", post(action))
         .route(
             "/script/websocket/{*path}",
             get(|/* ensures user auth */ _auth: AuthUser, p, q, s, ws| {

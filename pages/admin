@@ -71,6 +71,10 @@
 	</head>
 
 	<body>
+		<h1>Plumbing</h1>
+		<button id="start" class="inline">Start</button>
+		<button id="stop" class="inline">Stop</button>
+		<button id="restart" class="inline">Restart</button>
 		<h1>Uploads</h1>
 		<div class="container relative">
 			<h2>Mission</h2>

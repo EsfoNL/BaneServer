@@ -54,3 +54,8 @@ const uploader = (button, input, progress, path) => (() => {
 
 mission_button.onclick = uploader(mission_button, mission, mission_progress, "/admin/mission/");
 modpack_button.onclick = uploader(modpack_button, modpack, modpack_progress, "/admin/modpack/")
+
+const action = (act) => (() => fetch("/admin/action/" + act))
+start.onclick = action("start");
+stop.onclick = action("stop");
+restart.onclick = action("restart");

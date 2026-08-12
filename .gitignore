@@ -1,5 +1,4 @@
 /target
-.env
 /static
 # /templates/**
 perf.data
