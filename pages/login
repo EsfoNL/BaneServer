@@ -7,8 +7,8 @@
 	<body>
 		<h4></h4>
 		<form class="container" method="post" action="/admin/login" accept-encoding="UTF-8">
-			<input type="text" name="name">
-			<input type="password" name="password">
+			<input type="text" name="name" autocomplete="username">
+			<input type="password" name="password" autocomplete="current-password">
 			<input type="submit" value="Login">
 			{% if failed %}
 			Wrong name or password, try again
