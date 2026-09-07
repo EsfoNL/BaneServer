@@ -2,7 +2,6 @@ use std::{
     collections::{HashMap, VecDeque},
     future::Future,
     io::{Seek, Write},
-    os::unix::fs::FileExt,
     path::PathBuf,
 };
 
@@ -91,7 +90,7 @@ pub async fn create_upload(
 
     state
         .filestreams
-        .insert(uuid.clone(), FileStream { file, path })
+        .insert(uuid, FileStream { file, path })
         .await;
 
     Ok(uuid.to_string())
@@ -184,7 +183,7 @@ pub(crate) struct FileStreams {
     task: Mutex<JoinHandle<()>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct InnerFileStreams {
     streams: HashMap<Uuid, filestream::FileStream>,
     ttlqueue: VecDeque<(tokio::time::Instant, Uuid)>,
@@ -195,15 +194,6 @@ impl std::default::Default for FileStreams {
         Self {
             inner: Default::default(),
             task: Mutex::new(tokio::spawn(async {})),
-        }
-    }
-}
-
-impl std::default::Default for InnerFileStreams {
-    fn default() -> Self {
-        Self {
-            ttlqueue: Default::default(),
-            streams: Default::default(),
         }
     }
 }
@@ -244,7 +234,7 @@ impl FileStreams {
                 res.map(ToOwned::to_owned)
             } {
                 debug!("waiting until {:#?}", ttl);
-                tokio::time::sleep_until(ttl.clone()).await;
+                tokio::time::sleep_until(ttl).await;
                 let mut lock = inner.lock().await;
                 assert!(lock.ttlqueue.front().is_some());
                 assert_eq!(lock.ttlqueue.pop_front().unwrap(), (ttl, uuid));
@@ -261,8 +251,8 @@ impl FileStreams {
 impl InnerFileStreams {
     /// returns true if the queue was empty
     async fn insert(&mut self, uuid: Uuid, filestream: FileStream) -> bool {
-        self.streams.insert(uuid.clone(), filestream);
-        let ret = self.ttlqueue.len() == 0;
+        self.streams.insert(uuid, filestream);
+        let ret = self.ttlqueue.is_empty();
         self.ttlqueue
             .push_back((tokio::time::Instant::now() + TTL, uuid));
         ret

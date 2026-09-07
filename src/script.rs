@@ -10,12 +10,12 @@ use tracing::{debug, info};
 
 use crate::{state::State, webpages::get_path_under_dir};
 
-#[tracing::instrument(skip(state))]
+#[tracing::instrument(skip(_state))]
 pub async fn websocket_scripts(
     root: &std::path::Path,
     Path(path): Path<String>,
     Query(query): Query<HashMap<String, String>>,
-    axum::extract::State(state): axum::extract::State<Arc<State>>,
+    axum::extract::State(_state): axum::extract::State<Arc<State>>,
     ws: axum::extract::WebSocketUpgrade,
 ) -> axum::response::Response {
     info!("ws called: {path}");

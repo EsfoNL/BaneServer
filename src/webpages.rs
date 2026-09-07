@@ -1,10 +1,10 @@
 use crate::prelude::*;
 use axum::{
     body::Body,
-    extract::{ws::Message, Path, Query},
+    extract::{Path, Query},
     response::{IntoResponse, Response},
 };
-use http::{response::Parts, HeaderMap, HeaderName, HeaderValue, StatusCode};
+use http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use regex::Regex;
 use std::{
     cell::RefCell, collections::HashMap, os::unix::fs::MetadataExt, path::PathBuf, process::Stdio,
@@ -123,7 +123,7 @@ fn explore_dir(state: &State) -> Result<PathBuf, http::StatusCode> {
         return Err(http::StatusCode::INTERNAL_SERVER_ERROR);
     };
 
-    return Ok(canon_base_path);
+    Ok(canon_base_path)
 }
 
 #[instrument(skip(state))]
@@ -386,7 +386,7 @@ pub async fn scripts(
         .spawn()
         .and_then(|e| {
             e.stdout
-                .and_then(|v| e.stderr.map(|o| (v, o)))
+                .zip(e.stderr)
                 .ok_or(std::io::ErrorKind::NotFound.into())
         })
     else {
@@ -450,7 +450,7 @@ pub async fn download_zip(
 
     let mut proc = tokio::process::Command::new("zip")
         // since the pub diris a dir it is guaranteed to have a parent path
-        .args(&["-r", "-"])
+        .args(["-r", "-"])
         .arg(path_at_dir.file_name().unwrap())
         .current_dir(path_at_dir.parent().unwrap())
         .stdout(Stdio::piped())

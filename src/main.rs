@@ -13,7 +13,6 @@ mod state;
 mod webpages;
 // mod websocket;
 use prelude::*;
-use tower::{Layer, Service, ServiceBuilder};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::{admin::admin_router, webpages::download_zip};
@@ -92,7 +91,7 @@ async fn main() {
     }
     let tcp_listener = tokio::net::TcpListener::bind(&addr)
         .await
-        .unwrap_or_else(|_| panic!("failed to bind to {}", &addr));
+        .unwrap_or_else(|_| panic!("failed to bind to {}", addr));
 
     axum::serve(tcp_listener, router.into_make_service())
         .await
@@ -106,8 +105,7 @@ fn signal_handler(state: Arc<State>) -> notify::INotifyWatcher {
         let state = state.clone();
         notify::INotifyWatcher::new(
             move |res: Result<notify::Event, notify::Error>| {
-                if res.is_ok() {
-                    let ev = res.unwrap();
+                if let Ok(ev) = res {
                     if let Event {
                         kind: EventKind::Access(_) | EventKind::Any | EventKind::Other,
                         ..

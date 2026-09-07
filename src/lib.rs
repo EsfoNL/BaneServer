@@ -11,5 +11,5 @@ pub fn hash_password(password: &str, salt: Salt) -> String {
 }
 
 pub fn salt() -> SaltString {
-    SaltString::generate(OsRng::default())
+    SaltString::generate(OsRng)
 }

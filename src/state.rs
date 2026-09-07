@@ -1,12 +1,10 @@
 use crate::{api::filestream, prelude::*};
 
-use dashmap::DashMap;
 use futures::channel::mpsc::Sender;
 use notify::INotifyWatcher;
 use std::{fmt::Debug, sync::LazyLock};
 use tera::Tera;
 use tokio::sync::RwLock;
-use uuid::Uuid;
 #[derive(Debug)]
 #[allow(unused)]
 pub struct State {

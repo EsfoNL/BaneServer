@@ -1,4 +1,4 @@
-use sqlx::{sqlite::SqliteConnectOptions, ConnectOptions, QueryBuilder, Sqlite};
+use sqlx::{sqlite::SqliteConnectOptions, ConnectOptions, QueryBuilder};
 
 #[tokio::main]
 async fn main() {

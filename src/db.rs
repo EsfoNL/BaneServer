@@ -1,7 +1,7 @@
 use crate::prelude::*;
-use sqlx::{query, sqlite::SqliteConnectOptions};
+use sqlx::sqlite::SqliteConnectOptions;
 
-pub async fn configure(args: &Cli) -> Db {
+pub async fn configure(_args: &Cli) -> Db {
     // let mut options: MySqlConnectOptions = MySqlConnectOptions::new()
     // .port(args.sqlport)
     // .host(&args.sqlhost);

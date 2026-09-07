@@ -1,11 +1,10 @@
 use std::{
     convert::Infallible,
-    path::PathBuf,
     sync::Arc,
     time::{Duration, UNIX_EPOCH},
 };
 
-use crate::{api::filestream::file_uploader, cli::Cli, prelude::State};
+use crate::{api::filestream::file_uploader, prelude::State};
 use argon2::password_hash::Salt;
 use axum::{
     extract::{FromRequestParts, OptionalFromRequestParts, Path, State as AState},
@@ -19,7 +18,7 @@ use rand::{rngs::StdRng, RngExt};
 use serde::Deserialize;
 use sqlx::query;
 use tera::Context;
-use tracing::{debug, info};
+use tracing::info;
 
 pub struct AuthUser {
     name: String,
@@ -89,7 +88,7 @@ async fn login(
             .body(().into())
             .unwrap();
     }
-    return Response::new(state.pages.render("login", &Context::new()).unwrap().into());
+    Response::new(state.pages.render("login", &Context::new()).unwrap().into())
 }
 
 #[derive(Deserialize)]
@@ -126,7 +125,7 @@ async fn login_post(
     })?;
 
     let foreign_hash = hash_password(&data.password, Salt::new(&salt).unwrap());
-    if hash == foreign_hash.to_string() {
+    if hash == foreign_hash {
         let token = rand::make_rng::<StdRng>().random::<u128>().to_string();
         let expires = (std::time::SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -143,7 +142,7 @@ async fn login_post(
         .await
         .unwrap();
 
-        return Ok(Response::builder()
+        Ok(Response::builder()
             .header(
                 http::header::SET_COOKIE,
                 format!("token={token}; Max-Age={}", EXPIRY_MINS * 60),
@@ -151,7 +150,7 @@ async fn login_post(
             .header(http::header::LOCATION, "/admin")
             .status(http::StatusCode::SEE_OTHER)
             .body(().into())
-            .unwrap());
+            .unwrap())
         // todo!()
     } else {
         Err(Response::builder()
