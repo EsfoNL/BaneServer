@@ -1,7 +1,9 @@
 use crate::{api::filestream, prelude::*};
 
+use bane_server::DebugIgnore;
 use futures::channel::mpsc::Sender;
 use notify::INotifyWatcher;
+use ssq::nonblocking::Client;
 use std::{fmt::Debug, sync::LazyLock};
 use tera::Tera;
 use tokio::sync::RwLock;
@@ -16,6 +18,7 @@ pub struct State {
     pub pages: LazyLock<Tera, Box<dyn Fn() -> Tera + Send>>,
     pub context: tera::Context,
     pub watcher: RwLock<Option<INotifyWatcher>>,
+    pub client: DebugIgnore<ssq::nonblocking::Client>,
 }
 
 impl State {
@@ -28,6 +31,7 @@ impl State {
         if let Err(ref err) = tera {
             error!("Terra error: {err}");
         }
+        let client = DebugIgnore(Client::new().await.unwrap());
 
         State {
             db,
@@ -36,8 +40,16 @@ impl State {
             context,
             watcher: RwLock::new(None),
             args,
-            pages: LazyLock::new(Box::new(|| Tera::new("pages/**").unwrap())),
+            pages: LazyLock::new(Box::new(|| {
+                let mut tera = Tera::new();
+                tera.load_from_glob("pages/**");
+                tera
+            })),
             filestreams: Default::default(),
+            client,
         }
+    }
+    pub fn client(&self) -> crate::admin::Client {
+        crate::admin::Client(&self)
     }
 }

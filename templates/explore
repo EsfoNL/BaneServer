@@ -55,7 +55,7 @@
         <input id="filter" type="text" value="{{filter_v}}"></input>
         <input type="submit" hidden />
     </form>
-    {% macro file(data) %}
+    {% component file(data) %}
         {% if data.is_file %}
             {% set href = pub_file_prefix ~ data.path %}
         {% else %}
@@ -74,7 +74,7 @@
             <td style="color: hsl(calc(log({{data.size}}) / log(2) * 10), 100%, 50%)" class="size" data-size="{{data.size}}">{{data.size | filesizeformat}}</td>
             <td>{{data.atime | date(format="%Y-%m-%d %H:%M:%S")}}</td>
         </tr>
-    {% endmacro file %}
+    {% endcomponent file %}
     <table>
         <tr>
             <th></th>
@@ -87,13 +87,15 @@
             {% endfor %}
         </tr>
         {% if path is not pub_root %}
-            {{ self::file(data = obj(filename = "..", isFile = false, path = path ~ "/..", size = 0, atime = 0)) }}
+            {{ <file data = {obj(filename = "..", isFile = false, path = path ~ "/..", size = 0, atime = 0)} /> }}
         {% endif %}
-        {% for file in files | filter(attribute="is_file", value = false) %}
-            {{ self::file(data = file) }}
+        {% for file in files %}
+            {% if file.is_file %} {% continue %} {% endif %}
+            {{ <file data = {file} /> }}
         {% endfor %}
-        {% for file in files | filter(attribute="is_file", value = true) %}
-            {{ self::file(data = file) }}
+        {% for file in files %}
+            {% if not file.is_file %} {% continue %} {% endif %}
+            {{ <file data = {file} /> }}
         {% endfor %}
     </table>
     </body>

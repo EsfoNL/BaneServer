@@ -59,3 +59,26 @@ const action = (act) => (() => fetch("/admin/action/" + act, {method: "POST"}))
 start.onclick = action("start");
 document.getElementById("stop").onclick = action("stop");
 restart.onclick = action("restart");
+
+
+const players = document.getElementById("players");
+const blinkenlight = document.getElementById("blinkenlight");
+let livelogs_ws;
+function setup() {
+  livelogs_ws = new WebSocket("/admin/live-players");
+  livelogs_ws.onclose = _ => async { sleepsetup() };
+  livelogs_ws.onmessage = (e) => {
+    console.log(e);
+    /**
+    * @typedef {{name: string}[]} Players
+    * @type {Players} data
+    */
+    let data = JSON.parse(e.data);
+    players.innerHTML = "";
+    for(let datum of data.map(e => e.name)) {
+      players.innerText += datum;
+      players.innerHTML += "<br>";
+    }
+  }
+
+}

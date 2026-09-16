@@ -7,7 +7,9 @@ use std::{
 use crate::{api::filestream::file_uploader, prelude::State};
 use argon2::password_hash::Salt;
 use axum::{
-    extract::{FromRequestParts, OptionalFromRequestParts, Path, State as AState},
+    extract::{
+        FromRequestParts, OptionalFromRequestParts, Path, State as AState, WebSocketUpgrade,
+    },
     response::{Html, Response},
     routing::{get, post},
     Form, Router,
@@ -15,8 +17,9 @@ use axum::{
 use bane_server::hash_password;
 use http::{request, StatusCode};
 use rand::{rngs::StdRng, RngExt};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sqlx::query;
+use ssq::players::Player;
 use tera::Context;
 use tracing::info;
 
@@ -132,7 +135,7 @@ async fn login_post(
             .unwrap()
             + Duration::from_mins(EXPIRY_MINS))
         .as_secs() as i64;
-        query!(
+        sqlx::query!(
             "insert into tokens (name, token, expires) values (?, ?, ?)",
             name,
             token,
@@ -145,7 +148,10 @@ async fn login_post(
         Ok(Response::builder()
             .header(
                 http::header::SET_COOKIE,
-                format!("token={token}; Max-Age={}", EXPIRY_MINS * 60),
+                format!(
+                    "token={token}; Max-Age={}; SameSite=Strict",
+                    EXPIRY_MINS * 60
+                ),
             )
             .header(http::header::LOCATION, "/admin")
             .status(http::StatusCode::SEE_OTHER)
@@ -179,9 +185,17 @@ async fn modpack_uploaded(path: std::path::PathBuf, state: Arc<State>) {
     // debug!("modpack upload")
 }
 
-async fn admin(AState(state): AState<Arc<State>>, auth: AuthUser) -> Html<String> {
+pub struct Client<'a>(pub &'a State);
+impl<'a> Client<'a> {
+    async fn players(&self) -> ssq::errors::Result<Vec<Player>> {
+        self.0.client.players(self.0.args.steam_query_addr).await
+    }
+}
+
+async fn admin(AState(state): AState<Arc<State>>, _auth: AuthUser) -> Html<String> {
     let mut context = Context::new();
-    context.insert("name", &auth.name);
+    let client = state.client();
+    context.insert("players", &client.players().await.unwrap_or_default());
     state.pages.render("admin", &context).unwrap().into()
 }
 
@@ -198,6 +212,49 @@ async fn action(Path(action): Path<String>, _auth: AuthUser) -> http::StatusCode
     }
 }
 
+#[derive(Serialize)]
+struct JsonPlayer {
+    name: String,
+}
+impl TryFrom<Player> for JsonPlayer {
+    type Error = ();
+
+    fn try_from(value: Player) -> Result<Self, Self::Error> {
+        Ok(Self {
+            name: value.name.try_into().map_err(|_| ())?,
+        })
+    }
+}
+
+async fn live_players(
+    _auth: AuthUser,
+    AState(state): AState<Arc<State>>,
+    upgrade: WebSocketUpgrade,
+) -> Response {
+    upgrade.on_upgrade(async move |mut conn| loop {
+        let Ok(_) = conn
+            .send(axum::extract::ws::Message::Text(
+                serde_json::to_string(
+                    &state
+                        .client()
+                        .players()
+                        .await
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter_map(|e| JsonPlayer::try_from(e).ok())
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap_or_default()
+                .into(),
+            ))
+            .await
+        else {
+            return;
+        };
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    })
+}
+
 pub fn admin_router() -> Router<Arc<State>> {
     Router::new()
         .route("/login", get(login))
@@ -210,6 +267,7 @@ pub fn admin_router() -> Router<Arc<State>> {
                 crate::script::websocket_scripts(std::path::Path::new("scripts/admin"), p, q, s, ws)
             }),
         )
+        .route("/live-players", get(live_players))
         .nest("/modpack", file_uploader("/tmp".into(), modpack_uploaded))
         .nest("/mission", file_uploader("/tmp".into(), mission_uploaded))
 }

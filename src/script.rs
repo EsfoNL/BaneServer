@@ -18,15 +18,15 @@ pub async fn websocket_scripts(
     axum::extract::State(_state): axum::extract::State<Arc<State>>,
     ws: axum::extract::WebSocketUpgrade,
 ) -> axum::response::Response {
-    info!("ws called: {path}");
+    debug!("ws called: {path}");
     let Some(path) = get_path_under_dir(root, &path) else {
         return http::StatusCode::NOT_FOUND.into_response();
     };
     let Ok(query_json) = serde_json::to_string(&query) else {
         return http::StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    info!("query worked");
-    info!("script path: {path:?}");
+    debug!("query worked");
+    debug!("script path: {path:?}");
     let mut proc = tokio::process::Command::new(path);
     proc.env("QUERY", query_json)
         .stdout(std::process::Stdio::piped());

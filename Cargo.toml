@@ -26,7 +26,9 @@ regex = "1.11.1"
 serde = { version = "1.0.152", features = ["derive"] }
 serde_json = "1.0.93"
 sqlx = { version = ">=0.6", features = ["sqlite", "chrono", "runtime-tokio"] }
-tera = "1.17.1"
+ssq = { version = "0.8.0", features = ["arma3", "async", "serde"] }
+tera = { version = "2", features = ["glob_fs"] }
+tera-contrib = { version = "0.3.0", features = ["date", "filesize_format"] }
 thiserror = "1.0.57"
 tokio = { version = "1.23.0", features = ["rt-multi-thread", "macros", "tracing", "process"] }
 tokio-stream = "0.1.14"

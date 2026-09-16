@@ -1,4 +1,4 @@
-use std::{path::PathBuf, str::FromStr};
+use std::{net::SocketAddrV4, path::PathBuf, str::FromStr};
 
 use clap::Parser;
 use serde::{Deserialize, Deserializer};
@@ -57,6 +57,7 @@ impl Default for Cli {
             scripts_path: PathBuf::from_str("/srv/scripts").unwrap(),
             arma_mission_dir: PathBuf::from("/home/arma/arma/mpmissions"),
             modpack_install_script: PathBuf::from("/bin/true"),
+            steam_query_addr: SocketAddrV4::from_str("127.0.0.1:2303").unwrap(),
         }
     }
 }
@@ -122,4 +123,6 @@ pub struct Cli {
     pub arma_mission_dir: PathBuf,
     #[arg(long)]
     pub modpack_install_script: PathBuf,
+    #[arg(long)]
+    pub steam_query_addr: SocketAddrV4,
 }

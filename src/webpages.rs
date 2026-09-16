@@ -10,7 +10,7 @@ use std::{
     cell::RefCell, collections::HashMap, os::unix::fs::MetadataExt, path::PathBuf, process::Stdio,
     str::FromStr,
 };
-use tera::Tera;
+use tera::{Kwargs, Tera};
 use tokio::io::AsyncReadExt;
 use tracing::info_span;
 
@@ -24,16 +24,23 @@ thread_local! {
 }
 
 pub fn tera(cli: &Cli) -> Result<tera::Tera, tera::Error> {
-    match Tera::new(&format!("{}/**", cli.template_dir)) {
-        Ok(mut tera) => {
-            tera.register_function("command", command);
-            tera.register_function("sh", shell_command);
-            tera.register_function("files", files(cli));
-            tera.register_function("obj", obj);
-            tera.register_function("cors", cors);
-            tera.register_function("headers", headers);
-            tera.register_filter("ansi_to_html", ansi_to_html);
-            tera.register_tester("pub_root", is_pub_root(cli));
+    let mut tera = Tera::new();
+    tera.register_function("command", command);
+    tera.register_function("sh", shell_command);
+    tera.register_function("files", files(cli));
+    tera.register_function("obj", obj);
+    tera.register_function("cors", cors);
+    tera.register_function("headers", headers);
+    tera.register_filter("ansi_to_html", ansi_to_html);
+    tera.register_test("pub_root", is_pub_root(cli));
+    tera.register_filter("date", tera_contrib::dates::date);
+    tera.register_filter(
+        "filesizeformat",
+        tera_contrib::filesize_format::filesize_format,
+    );
+
+    match tera.load_from_glob(&format!("{}/**", cli.template_dir)) {
+        Ok(()) => {
             info!(
                 "loaded terra templates: {:#?}",
                 tera.get_template_names().collect::<Vec<&str>>()
@@ -44,27 +51,23 @@ pub fn tera(cli: &Cli) -> Result<tera::Tera, tera::Error> {
     }
 }
 
-fn ansi_to_html(
-    value: &tera::Value,
-    _: &HashMap<String, tera::Value>,
-) -> tera::Result<tera::Value> {
-    ansi_to_html::convert(value.as_str().ok_or(tera::Error::call_filter(
-        String::from("invalid argument to filter"),
-        "invalid arg",
-    ))?)
-    .map_err(|e| tera::Error::call_filter(String::from("failed to convert from ansi to html"), e))
-    .map(tera::Value::String)
+fn ansi_to_html(value: &str, _: Kwargs, _: &tera::State) -> tera::TeraResult<tera::Value> {
+    ansi_to_html::convert(value)
+        .map_err(|_| tera::Error::message(String::from("failed to convert from ansi to html")))
+        .map(|e| tera::Value::safe_string(&e))
 }
 
-fn headers(args: &HashMap<String, tera::Value>) -> tera::Result<tera::Value> {
+fn headers(args: Kwargs, _: &tera::State) -> tera::TeraResult<tera::Value> {
     TERA_CTX.with_borrow_mut(|ctx| {
         debug!("here!");
         for (key, val) in args
             .iter()
-            .map(|(a, b)| (a, b.as_str().ok_or(tera::Error::msg("wrong value"))))
+            .map(|(a, b)| (a, b.as_str().ok_or(tera::Error::message("wrong value"))))
         {
             let val = val?;
             let key: String = key
+                .as_str()
+                .ok_or(tera::Error::message("invalid key"))?
                 .chars()
                 .map(|e| match e {
                     '_' => '-',
@@ -73,23 +76,24 @@ fn headers(args: &HashMap<String, tera::Value>) -> tera::Result<tera::Value> {
                 .collect();
             debug!("inserting {key}: {val} into headers");
             ctx.response_headers.insert(
-                HeaderName::from_str(key.as_str()).map_err(|e| e.to_string())?,
-                HeaderValue::from_str(val).map_err(|e| e.to_string())?,
+                HeaderName::from_str(key.as_str())
+                    .map_err(|e| tera::Error::message(e.to_string()))?,
+                HeaderValue::from_str(val).map_err(|e| tera::Error::message(e.to_string()))?,
             );
         }
-        Ok(tera::Value::Null)
+        Ok(tera::Value::none())
     })
 }
 
-fn cors(args: &HashMap<String, tera::Value>) -> tera::Result<tera::Value> {
+fn cors(args: Kwargs, _: &tera::State) -> tera::TeraResult<tera::Value> {
     TERA_CTX.with(|e| {
-        if let Some(val) = args.get("orgs").and_then(tera::Value::as_array) {
+        if let Some(val) = args.get::<Vec<&str>>("orgs")? {
             let response_headers = &mut e.borrow_mut().response_headers;
             response_headers.insert(
                 "Access-Control-Allow-Origin",
-                HeaderValue::from_str(&val.iter().filter_map(tera::Value::as_str).fold(
+                HeaderValue::from_str(&val.into_iter().fold(
                     String::new(),
-                    |mut acc, v| {
+                    |mut acc: String, v: &str| {
                         acc.push_str(v);
                         acc.push_str(", ");
                         acc
@@ -98,12 +102,15 @@ fn cors(args: &HashMap<String, tera::Value>) -> tera::Result<tera::Value> {
                 .unwrap(),
             );
         }
-        Ok(tera::Value::Null)
+        Ok(tera::Value::none())
     })
 }
 
-fn obj(args: &HashMap<String, tera::Value>) -> tera::Result<tera::Value> {
-    Ok(tera::Value::Object(args.clone().drain().collect()))
+fn obj(args: Kwargs, _: &tera::State) -> tera::TeraResult<HashMap<String, tera::Value>> {
+    Ok(args
+        .iter()
+        .filter_map(|e| Some((e.0.as_str()?.to_owned(), e.1.clone())))
+        .collect())
 }
 
 pub fn tera_context(cli: &Cli) -> tera::Context {
@@ -204,17 +211,14 @@ pub async fn handler(
     }
 }*/
 
-pub fn command(args: &HashMap<String, tera::Value>) -> Result<tera::Value, tera::Error> {
+pub fn command(kwargs: Kwargs, _: &tera::State) -> Result<tera::Value, tera::Error> {
     let mut command = std::process::Command::new(
-        args.get("name")
-            .ok_or(tera::Error::msg("program name not provided"))?
-            .as_str()
-            .ok_or(tera::Error::msg("program name not a string"))?,
+        kwargs
+            .get::<&str>("name")?
+            .ok_or(tera::Error::message("program name not provided"))?,
     );
-    if let Some(args) = args
-        .get("args")
-        .and_then(|e| e.as_array())
-        .map(|e| e.iter().filter_map(|e| e.as_str()))
+    if let Ok(Some(args)) = kwargs.get::<Vec<String>>("args")
+    // .map(|e| e.iter().filter_map(|e| e.as_str()))
     {
         for i in args {
             command.arg(i);
@@ -226,27 +230,30 @@ pub fn command(args: &HashMap<String, tera::Value>) -> Result<tera::Value, tera:
     ))
 }
 
-pub fn shell_command(args: &HashMap<String, tera::Value>) -> Result<tera::Value, tera::Error> {
+pub fn shell_command(args: Kwargs, _: &tera::State) -> Result<tera::Value, tera::Error> {
     let mut command = std::process::Command::new("sh");
     command.arg("-c");
-    command.arg(args.get("command").unwrap().as_str().unwrap());
+    command.arg(args.get::<&str>("command")?.unwrap());
     Ok(to_json_or_string(
         std::str::from_utf8(command.output().unwrap().stdout.as_slice()).unwrap(),
     ))
 }
 
-fn to_json_or_string(string: &str) -> serde_json::Value {
-    serde_json::from_str(string).unwrap_or(serde_json::json!(string))
+fn to_json_or_string(string: &str) -> tera::Value {
+    tera::Value::from_serializable(
+        &serde_json::from_str::<serde_json::Value>(string)
+            .unwrap_or(serde_json::Value::String(string.to_owned())),
+    )
 }
 
 type TeraBoxedTester =
-    Box<dyn Send + Sync + Fn(Option<&tera::Value>, &[tera::Value]) -> Result<bool, tera::Error>>;
+    Box<dyn Send + Sync + Fn(&tera::Value, Kwargs, &tera::State) -> Result<bool, tera::Error>>;
 
 fn is_pub_root(cli: &Cli) -> TeraBoxedTester {
     let mut path = std::env::current_dir().unwrap();
-    let failed_to_construct_path: TeraBoxedTester = Box::new(|_, _| {
+    let failed_to_construct_path: TeraBoxedTester = Box::new(|_, _, _| {
         error!("Tera pub dir not set");
-        Err(tera::Error::msg("tera pub dir not set"))
+        Err(tera::Error::message("tera pub dir not set"))
     });
     let Some(add_path) = cli.pub_dir.as_ref().map(std::path::PathBuf::from) else {
         return failed_to_construct_path;
@@ -256,10 +263,10 @@ fn is_pub_root(cli: &Cli) -> TeraBoxedTester {
         return failed_to_construct_path;
     };
     info!("pub dir absolute path: {path:?}");
-    Box::new(move |value: Option<&tera::Value>, _: &[tera::Value]| {
+    Box::new(move |value: &tera::Value, _, _| {
         debug!("value: {value:?}");
         Ok(value
-            .and_then(|e| e.as_str())
+            .as_str()
             .and_then(|e| {
                 let mut cur = path.clone();
                 cur.push(e);
@@ -273,7 +280,7 @@ fn is_pub_root(cli: &Cli) -> TeraBoxedTester {
 }
 
 type TeraBoxedFn =
-    Box<dyn Sync + Send + Fn(&HashMap<String, tera::Value>) -> Result<tera::Value, tera::Error>>;
+    Box<dyn Sync + Send + Fn(Kwargs, &tera::State) -> Result<tera::Value, tera::Error>>;
 
 #[derive(serde::Serialize)]
 struct FileInfo {
@@ -287,29 +294,31 @@ struct FileInfo {
 fn files(cli: &Cli) -> TeraBoxedFn {
     let mut path = std::env::current_dir().unwrap();
     let Some(add_path) = cli.pub_dir.as_ref().map(std::path::PathBuf::from) else {
-        return Box::new(|_| {
+        return Box::new(|_, _| {
             error!("Tera pub dir not set");
-            Err(tera::Error::msg("tera pub dir not set"))
+            Err(tera::Error::message("tera pub dir not set"))
         });
     };
     path.push(add_path);
     // info!("pub dir absolute path: {path:?}");
 
-    Box::new(move |args: &HashMap<String, tera::Value>| {
+    Box::new(move |args: Kwargs, _| {
         info_span!("files").in_scope(|| {
             let mut new_path = path.clone();
-            let s = args.get("path").and_then(|e| e.as_str()).unwrap_or("");
+            let s = args.get("path")?.unwrap_or("");
             new_path.push(s);
             debug!("s: {s}");
 
             new_path = new_path
                 .canonicalize()
-                .map_err(|_| tera::Error::msg(format!("not a valid path: {new_path:#?}")))?;
+                .map_err(|_| tera::Error::message(format!("not a valid path: {new_path:#?}")))?;
             if !new_path.starts_with(&path) {
-                return Err(tera::Error::msg(format!("not a valid path: {new_path:#?}")));
+                return Err(tera::Error::message(format!(
+                    "not a valid path: {new_path:#?}"
+                )));
             };
             let mut res = std::fs::read_dir(&new_path)
-                .map_err(|_| tera::Error::msg(format!("not a valid path: {new_path:#?}")))?
+                .map_err(|_| tera::Error::message(format!("not a valid path: {new_path:#?}")))?
                 .filter_map(Result::ok)
                 .map(|e| {
                     (
@@ -331,23 +340,23 @@ fn files(cli: &Cli) -> TeraBoxedFn {
                     path: res_path.to_string_lossy().into_owned(),
                 })
                 .collect::<Vec<_>>();
-            if let Some(option) = args.get("sort").and_then(|e| e.as_str()) {
+            if let Some(option) = args.get("sort")? {
                 match option {
                     "atime" => res.sort_unstable_by_key(|e| e.atime),
                     "size" => res.sort_unstable_by_key(|e| e.size),
                     _ => (),
                 }
             }
-            if let Some(true) = args.get("rev").and_then(tera::Value::as_bool) {
+            if let Some(true) = args.get("rev")? {
                 // info!("reversed!");
                 res.reverse();
             }
 
-            if let Some(ext) = args.get("filter").and_then(tera::Value::as_str) {
+            if let Some(ext) = args.get("filter")? {
                 let re = Regex::new(ext).unwrap();
                 res.retain(|e| re.is_match(&e.filename));
             }
-            tera::to_value(res).map_err(|e| e.into())
+            tera::Value::try_from_serializable(&res)
         })
     })
 }

@@ -17,13 +17,11 @@
 					}
 					let onmsg = (m) => {
 						logs.innerText += m.data;
-						console.log(logs.textContent.length);
 						if (logs.textContent.length > 5000) {
-							console.log("cull!");
 							logs.innerText = logs.innerText.slice(-25000);
 						}
 						if (bottom) {
-							document.documentElement.scrollTop = document.documentElement.scrollHeight;
+							// document.documentElement.scrollTop = document.documentElement.scrollHeight;
 							<!-- document.scroll(document.innerheight); -->
 							<!-- logs.scrollIntoView(false); -->
 						}
@@ -67,6 +65,23 @@
 			.relative {
 				position: relative;
 			}
+			.blinkenlight {
+				/* color: red; */
+				display: inline;
+			}
+			.blinkenlight {
+				color: oklab(from green 0.25 a b);
+				animation: blinken 1s ease 0s infinite alternate;
+			}
+			@keyframes blinken {
+				from {
+					color: oklab(from green 0.25 a b);
+				}
+				to {
+					color: green;
+				}
+			}
+		}
 		</style>
 	</head>
 
@@ -93,6 +108,12 @@
 				<h6>Uploading</h6>
 				<progress value="0.1" max="100"></progress>
 			</div>
+		</div>
+		<h1>Players <div id="blinkenlight" class="blinkenlight">●</div></h1>
+		<div id="players">
+		{% for player in players %}
+		{{ player.name }}<br>
+		{% endfor %}
 		</div>
 		<h1>Logs</h1>
 		<div id="logs" class="container">
