@@ -12,7 +12,7 @@ async fn main() {
     let cli = Cli::parse();
 
     let salt = bane_server::salt();
-    let hash = bane_server::hash_password(&cli.password, salt.as_salt());
+    let hash = bane_server::hash_password(&cli.password, salt.as_salt()).unwrap();
 
     let mut db = SqliteConnectOptions::new()
         .filename("db.sqlite")

@@ -110,7 +110,7 @@ const EXPIRY_MINS: u64 = 20;
 async fn login_post(
     AState(state): AState<Arc<State>>,
     Form(data): Form<LoginData>,
-) -> Result<Response, Response> {
+) -> Result<Response, http::StatusCode> {
     // HeaderMap::new()
     let name = data.name;
     let Row { name, hash, salt } = sqlx::query_as!(
@@ -120,14 +120,10 @@ async fn login_post(
     )
     .fetch_one(&state.db)
     .await
-    .map_err(|_| {
-        Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body(().into())
-            .unwrap()
-    })?;
+    .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
-    let foreign_hash = hash_password(&data.password, Salt::new(&salt).unwrap());
+    let foreign_hash = hash_password(&data.password, Salt::new(&salt).unwrap())
+        .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
     if hash == foreign_hash {
         let token = rand::make_rng::<StdRng>().random::<u128>().to_string();
         let expires = (std::time::SystemTime::now()
@@ -159,10 +155,7 @@ async fn login_post(
             .unwrap())
         // todo!()
     } else {
-        Err(Response::builder()
-            .status(StatusCode::UNAUTHORIZED)
-            .body(().into())
-            .unwrap())
+        Err(StatusCode::UNAUTHORIZED)
     }
     // Argon2::default().hash_password_into_with_memory(pwd, salt, out, memory_blocks)
 }
