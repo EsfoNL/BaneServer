@@ -2642,9 +2642,9 @@ dependencies = [
 
 [[package]]
 name = "ssq"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6256ae0d23661a0becf52796786e7784dc4d577ec746ebfd977de3fc1d19c674"
+checksum = "cb30e7939461e3ea5f9da1f6aa1ccf1da6a0c83677e83e8104b40a62249bc0fc"
 dependencies = [
  "bstr",
  "byteorder",

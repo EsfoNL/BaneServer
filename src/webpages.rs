@@ -489,9 +489,22 @@ pub async fn download_zip(
 
 pub async fn asset(Path(path): Path<String>) -> Result<Response, Response> {
     let r404 = || Response::builder().status(404).body(().into()).unwrap();
-    info!("path: {path}");
+    debug!("path: {path}");
     let path = get_path_under_dir(&PathBuf::from("assets"), &path).ok_or_else(r404)?;
-    return Ok(Response::new(Body::from_stream(
-        tokio_util::io::ReaderStream::new(tokio::fs::File::open(&path).await.map_err(|_| r404())?),
+    let mime_type = if let Some(ext) = path.extension() {
+        match &*ext.to_string_lossy() {
+            "js" => "text/javascript",
+            _ => "",
+        }
+    } else {
+        ""
+    };
+    let mut response = Response::new(Body::from_stream(tokio_util::io::ReaderStream::new(
+        tokio::fs::File::open(&path).await.map_err(|_| r404())?,
     )));
+    response.headers_mut().insert(
+        http::header::CONTENT_TYPE,
+        HeaderValue::from_static(mime_type),
+    );
+    Ok(response)
 }

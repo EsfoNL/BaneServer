@@ -154,8 +154,9 @@ pub async fn finish_upload<Fu: Future<Output = ()>, F: Fn(std::path::PathBuf, Ar
 pub fn file_uploader<
     Fu: Future<Output = ()> + 'static + Send,
     F: Fn(std::path::PathBuf, Arc<State>) -> Fu + Send + Sync + 'static + Clone,
+    P: Into<std::path::PathBuf>,
 >(
-    output_path: PathBuf,
+    output_path: P,
     file_handler: F,
 ) -> Router<Arc<State>> {
     // let file_handler_clone = file_handler.clone();
@@ -165,12 +166,13 @@ pub fn file_uploader<
             finish_upload(&handler, state, auth, uuid).await
             // todo!()
         }; // as AsyncFn(),
+    let output_path = output_path.into();
     Router::new()
         .route(
             "/create/{*filename}",
             post(async move |state, auth, filename| {
                 let output_path = output_path;
-                create_upload(&output_path, state, auth, filename).await
+                create_upload(output_path.as_ref(), state, auth, filename).await
             }),
         )
         .route("/chunk/{*uuid}", post(upload_chunk))

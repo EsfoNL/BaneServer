@@ -31,7 +31,8 @@ impl State {
         if let Err(ref err) = tera {
             error!("Terra error: {err}");
         }
-        let client = DebugIgnore(Client::new().await.unwrap());
+        let mut client = DebugIgnore(Client::new().await.unwrap());
+        client.max_size(0xFFFFFF);
 
         State {
             db,
@@ -42,7 +43,9 @@ impl State {
             args,
             pages: LazyLock::new(Box::new(|| {
                 let mut tera = Tera::new();
-                tera.load_from_glob("pages/**");
+                if let Err(err) = tera.load_from_glob("pages/**") {
+                    error!("{}", err.kind().to_string())
+                };
                 tera
             })),
             filestreams: Default::default(),

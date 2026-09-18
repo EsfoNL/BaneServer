@@ -19,7 +19,7 @@ use http::{request, StatusCode};
 use rand::{rngs::StdRng, RngExt};
 use serde::{Deserialize, Serialize};
 use sqlx::query;
-use ssq::players::Player;
+use ssq::{players::Player, rules::arma3::Arma3Rules};
 use tera::Context;
 use tracing::info;
 
@@ -35,9 +35,8 @@ impl FromRequestParts<Arc<State>> for AuthUser {
     ) -> Result<Self, Self::Rejection> {
         let redirect = || {
             Response::builder()
-                .status(http::StatusCode::SEE_OTHER)
-                .header(http::header::LOCATION, "/admin/login")
-                .body(().into())
+                .status(http::StatusCode::UNAUTHORIZED)
+                .body(include_str!("../assets/redirect.html").into())
                 .unwrap()
         };
         let cookie = parts
@@ -183,12 +182,37 @@ impl<'a> Client<'a> {
     async fn players(&self) -> ssq::errors::Result<Vec<Player>> {
         self.0.client.players(self.0.args.steam_query_addr).await
     }
+    async fn arma3_rules(&self) -> ssq::errors::Result<Arma3Rules> {
+        // info!("trying to get rules");
+        let rules = self.0.client.rules(self.0.args.steam_query_addr).await?;
+        // info!("rules: {rules:#?}");
+        // info!("got rules");
+        for (index, rule) in rules.iter().enumerate() {
+            std::fs::write(
+                format!("/home/ersa/Code/rust/ssq/rule-{index}-name"),
+                rule.name.as_slice(),
+            );
+            std::fs::write(
+                format!("/home/ersa/Code/rust/ssq/rule-{index}-value"),
+                rule.value.as_slice(),
+            );
+        }
+        let arma_rules = Arma3Rules::from_rules(&rules)?;
+        Ok(arma_rules)
+    }
 }
 
 async fn admin(AState(state): AState<Arc<State>>, _auth: AuthUser) -> Html<String> {
     let mut context = Context::new();
     let client = state.client();
     context.insert("players", &client.players().await.unwrap_or_default());
+    info!("rules");
+    let rules_result = client.arma3_rules().await;
+    if let Ok(ref rules) = rules_result {
+        context.insert("arma_rules", rules);
+        info!("inserted")
+    }
+    // info!("rules_result: {rules_result:?}");
     state.pages.render("admin", &context).unwrap().into()
 }
 
@@ -261,6 +285,6 @@ pub fn admin_router() -> Router<Arc<State>> {
             }),
         )
         .route("/live-players", get(live_players))
-        .nest("/modpack", file_uploader("/tmp".into(), modpack_uploaded))
-        .nest("/mission", file_uploader("/tmp".into(), mission_uploaded))
+        .nest("/modpack", file_uploader("/tmp", modpack_uploaded))
+        .nest("/mission", file_uploader("/tmp", mission_uploaded))
 }

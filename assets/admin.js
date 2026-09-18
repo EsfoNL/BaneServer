@@ -1,61 +1,49 @@
+import { uploader } from "./uploader.js";
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-const CHUNKSIZE = 262144; // 256Kib
-
-
-/**
-* @param {Blob} file - the blob to chunk
-* @returns {[Blob]} - the blob chunks
-*/
-function chunk_blob(file) {
-  let chunk_count = Math.ceil(file.size / CHUNKSIZE);
-  let chunks = [];
-
-  for (let i = 0; i < chunk_count; i++) {
-    chunks.push(file.slice(i * CHUNKSIZE, Math.max((i + 1) * CHUNKSIZE), file.size))
+var ws_logs;
+const blinkenlight_logs = document.getElementById("blinkenlight-logs");
+const logs = document.getElementById("logs");
+addEventListener("DOMContentLoaded", (event) => {
+  console.log("loaded");
+  let sleep = 1000;
+  let onopen = () => {
+    sleep = 1000;
+    blinkenlight_logs.setAttribute("live", "live");
   }
+  let onmsg = (m) => {
+    logs.innerText += m.data;
+    if (logs.textContent.length > 5000) {
+      logs.innerText = logs.innerText.slice(-25000);
+    }
+  };
+  let oncls = () => {
+    blinkenlight_logs.removeAttribute("live");
+    setTimeout(() => {
+      ws_logs = new WebSocket("/admin/script/websocket/live-logs?no-initial=true");
+      ws_logs.onmessage = onmsg;
+      ws_logs.onclose = oncls;
+      ws_logs.onopen = onopen;
+      sleep = sleep * 2;
 
-  return chunks;
-}
-
-
-/**
-* @param {string} base - the base path
-* @param {HTMLElement} progress - Progress div
-* @param {File} file - file to upload
-*/
-async function upload_file(base, file, progress) {
-  let chunks = chunk_blob(file);
-  // console.log(chunks);
-  let res = await fetch(base + "create/" + encodeURIComponent(file.name), {method: "POST"});
-
-  const uuid = await res.text();
-  let url = base + "chunk/" + encodeURIComponent(uuid);
-  let bar = progress.querySelector('progress');
-  for (let i = 0; i < chunks.length; i++) {
-    await fetch(url, {method: "POST", headers: {"byte-offset": CHUNKSIZE * i}, body: chunks[i]});
-    bar.value = (i + 1) / chunks.length * 100;
+      console.log("reconnect", sleep);
+    }, sleep)
   }
+  ws_logs = new WebSocket("/admin/script/websocket/live-logs");
+  ws_logs.onmessage = onmsg;
+  ws_logs.onclose = oncls;
+  ws_logs.onopen = onopen;
 
-  await fetch(base + "finish/" + encodeURIComponent(uuid), {method: "POST"});
-}
-const uploader = (button, input, progress, path) => (() => {
-  if (input.files.length < 1) {
-    console.log("no files selected");
-    return;
-  }
-  let file = input.files[0];
-  button.disabled = true; // prevent double transmissions
-  progress.hidden = false;
-  upload_file(path, file, progress)
-    .finally(() => progress.hidden = true)
-    .finally(() => setTimeout(() => button.disabled = false, 1000));
+  logs.textContent = '';
 });
+
+
+
 
 mission_button.onclick = uploader(mission_button, mission, mission_progress, "/admin/mission/");
 modpack_button.onclick = uploader(modpack_button, modpack, modpack_progress, "/admin/modpack/")
 
-const action = (act) => (() => fetch("/admin/action/" + act, {method: "POST"}))
+const action = (act) => (() => fetch("/admin/action/" + act, { method: "POST" }))
 start.onclick = action("start");
 document.getElementById("stop").onclick = action("stop");
 restart.onclick = action("restart");
@@ -66,7 +54,13 @@ const blinkenlight = document.getElementById("blinkenlight");
 let livelogs_ws;
 function setup() {
   livelogs_ws = new WebSocket("/admin/live-players");
-  livelogs_ws.onclose = _ => async { sleepsetup() };
+  livelogs_ws.onclose = _ => {
+    blinkenlight.removeAttribute("live");
+    delay(1000).then(_ => setup())
+  };
+  livelogs_ws.onopen = _ => {
+    blinkenlight.setAttribute("live", "live");
+  };
   livelogs_ws.onmessage = (e) => {
     console.log(e);
     /**
@@ -75,10 +69,12 @@ function setup() {
     */
     let data = JSON.parse(e.data);
     players.innerHTML = "";
-    for(let datum of data.map(e => e.name)) {
+    for (let datum of data.map(e => e.name)) {
       players.innerText += datum;
       players.innerHTML += "<br>";
     }
   }
 
 }
+
+setup();
