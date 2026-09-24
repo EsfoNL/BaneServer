@@ -49,7 +49,7 @@
 				<div>
 					<h2>Mods</h2>
 					<ul class="scroll block">
-						{% for mod in (arma_rules.mods) %}
+						{% for mod in (arma_rules?.mods) %}
 						<li>{{ mod.name }}</li>
 						{% endfor %}
 					</ul>

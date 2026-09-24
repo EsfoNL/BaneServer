@@ -19,7 +19,7 @@ use tokio_stream::StreamExt;
 use uuid::Uuid;
 
 use crate::{admin::AuthUser, api::filestream, prelude::*};
-use axum::extract::State as AState;
+type AState = axum::extract::State<Arc<State>>;
 
 pub struct ByteOffset(u64);
 static BYTE_OFFSET_HEADERNAME: HeaderName = HeaderName::from_static("byte-offset");
@@ -69,7 +69,7 @@ const TTL: tokio::time::Duration = tokio::time::Duration::from_mins(1);
 #[tracing::instrument(skip(_auth, state))]
 pub async fn create_upload(
     location: &std::path::Path,
-    AState(state): AState<Arc<State>>,
+    state: AState,
     _auth: AuthUser,
     Path(filename): Path<String>,
 ) -> Result<String, StatusCode> {
@@ -98,7 +98,7 @@ pub async fn create_upload(
 
 /// POST
 pub async fn upload_chunk(
-    AState(state): AState<Arc<State>>,
+    state: AState,
     _auth: AuthUser,
     Path(uuid): Path<Uuid>,
     TypedHeader(offset): TypedHeader<ByteOffset>,
@@ -135,7 +135,7 @@ pub async fn upload_chunk(
 /// handler gets called with hopefully completed file at filepath
 pub async fn finish_upload<Fu: Future<Output = ()>, F: Fn(std::path::PathBuf, Arc<State>) -> Fu>(
     handler: F,
-    AState(state): AState<Arc<State>>,
+    state: AState,
     _auth: AuthUser,
     Path(uuid): Path<Uuid>,
 ) -> Result<(), StatusCode> {
@@ -147,7 +147,7 @@ pub async fn finish_upload<Fu: Future<Output = ()>, F: Fn(std::path::PathBuf, Ar
         .finish()
         .await;
     debug!("file {filepath:?} finished");
-    handler(filepath, state.clone()).await;
+    handler(filepath, state.0.clone()).await;
     Ok(())
 }
 
@@ -160,12 +160,11 @@ pub fn file_uploader<
     file_handler: F,
 ) -> Router<Arc<State>> {
     // let file_handler_clone = file_handler.clone();
-    let finish_upload_handler =
-        async move |state: AState<Arc<State>>, auth: AuthUser, uuid: Path<Uuid>| {
-            let handler = file_handler.clone();
-            finish_upload(&handler, state, auth, uuid).await
-            // todo!()
-        }; // as AsyncFn(),
+    let finish_upload_handler = async move |state: AState, auth: AuthUser, uuid: Path<Uuid>| {
+        let handler = file_handler.clone();
+        finish_upload(&handler, state, auth, uuid).await
+        // todo!()
+    }; // as AsyncFn(),
     let output_path = output_path.into();
     Router::new()
         .route(

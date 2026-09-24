@@ -58,6 +58,8 @@ impl Default for Cli {
             arma_mission_dir: PathBuf::from("/home/arma/arma/mpmissions"),
             modpack_install_script: PathBuf::from("/bin/true"),
             steam_query_addr: SocketAddrV4::from_str("127.0.0.1:2303").unwrap(),
+            arma_modprofiles_dir: "/home/arma/arma/profiles".into(),
+            arma_profile_folder_name: "/home/arma/arma/mods".into(),
         }
     }
 }
@@ -125,4 +127,9 @@ pub struct Cli {
     pub modpack_install_script: PathBuf,
     #[arg(long)]
     pub steam_query_addr: SocketAddrV4,
+
+    #[arg(long)]
+    pub arma_modprofiles_dir: PathBuf,
+    #[arg(long)]
+    pub arma_profile_folder_name: PathBuf,
 }

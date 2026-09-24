@@ -1,5 +1,6 @@
 use std::{
     convert::Infallible,
+    str::FromStr,
     sync::Arc,
     time::{Duration, UNIX_EPOCH},
 };
@@ -7,14 +8,12 @@ use std::{
 use crate::{api::filestream::file_uploader, prelude::State};
 use argon2::password_hash::Salt;
 use axum::{
-    extract::{
-        FromRequestParts, OptionalFromRequestParts, Path, State as AState, WebSocketUpgrade,
-    },
+    extract::{FromRequestParts, OptionalFromRequestParts, Path, WebSocketUpgrade},
     response::{Html, Response},
     routing::{get, post},
     Form, Router,
 };
-use bane_server::hash_password;
+use bane_server::{hash_password, StrEnum};
 use http::{request, StatusCode};
 use rand::{rngs::StdRng, RngExt};
 use serde::{Deserialize, Serialize};
@@ -22,6 +21,8 @@ use sqlx::query;
 use ssq::{players::Player, rules::arma3::Arma3Rules};
 use tera::Context;
 use tracing::info;
+
+type AState = axum::extract::State<Arc<State>>;
 
 pub struct AuthUser {
     name: String,
@@ -79,10 +80,7 @@ impl OptionalFromRequestParts<Arc<State>> for AuthUser {
     }
 }
 
-async fn login(
-    AState(state): axum::extract::State<Arc<State>>,
-    auth: Option<AuthUser>,
-) -> Response {
+async fn login(state: AState, auth: Option<AuthUser>) -> Response {
     if auth.is_some() {
         return Response::builder()
             .status(http::StatusCode::SEE_OTHER)
@@ -107,7 +105,7 @@ struct Row {
 
 const EXPIRY_MINS: u64 = 20;
 async fn login_post(
-    AState(state): AState<Arc<State>>,
+    state: AState,
     Form(data): Form<LoginData>,
 ) -> Result<Response, http::StatusCode> {
     // HeaderMap::new()
@@ -187,22 +185,12 @@ impl<'a> Client<'a> {
         let rules = self.0.client.rules(self.0.args.steam_query_addr).await?;
         // info!("rules: {rules:#?}");
         // info!("got rules");
-        for (index, rule) in rules.iter().enumerate() {
-            std::fs::write(
-                format!("/home/ersa/Code/rust/ssq/rule-{index}-name"),
-                rule.name.as_slice(),
-            );
-            std::fs::write(
-                format!("/home/ersa/Code/rust/ssq/rule-{index}-value"),
-                rule.value.as_slice(),
-            );
-        }
         let arma_rules = Arma3Rules::from_rules(&rules)?;
         Ok(arma_rules)
     }
 }
 
-async fn admin(AState(state): AState<Arc<State>>, _auth: AuthUser) -> Html<String> {
+async fn admin(state: AState, _auth: AuthUser) -> Html<String> {
     let mut context = Context::new();
     let client = state.client();
     context.insert("players", &client.players().await.unwrap_or_default());
@@ -210,23 +198,27 @@ async fn admin(AState(state): AState<Arc<State>>, _auth: AuthUser) -> Html<Strin
     let rules_result = client.arma3_rules().await;
     if let Ok(ref rules) = rules_result {
         context.insert("arma_rules", rules);
-        info!("inserted")
+        // info!("inserted")
+    } else {
+        context.insert("arma_rules", &tera::Value::none());
     }
     // info!("rules_result: {rules_result:?}");
     state.pages.render("admin", &context).unwrap().into()
 }
+StrEnum!(Action, [Stop => "stop", Start => "start", Restart => "restart"]);
 
-async fn action(Path(action): Path<String>, _auth: AuthUser) -> http::StatusCode {
-    if ["start", "stop", "restart"].contains(&action.as_str()) {
-        tokio::process::Command::new("systemctl")
-            .args([action.as_str(), "arma"])
-            .status()
-            .await
-            .map(|_| http::StatusCode::OK)
-            .unwrap_or(http::StatusCode::INTERNAL_SERVER_ERROR)
-    } else {
-        http::StatusCode::BAD_REQUEST
-    }
+/// non validated action!
+async fn arma_action(action: Action) -> Result<(), http::StatusCode> {
+    tokio::process::Command::new("systemctl")
+        .args([action.to_str(), "arma"])
+        .status()
+        .await
+        .map(|_| ())
+        .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn action(Path(action): Path<String>, _auth: AuthUser) -> Result<(), http::StatusCode> {
+    arma_action(Action::from_str(&action).map_err(|_| http::StatusCode::BAD_REQUEST)?).await
 }
 
 #[derive(Serialize)]
@@ -243,11 +235,7 @@ impl TryFrom<Player> for JsonPlayer {
     }
 }
 
-async fn live_players(
-    _auth: AuthUser,
-    AState(state): AState<Arc<State>>,
-    upgrade: WebSocketUpgrade,
-) -> Response {
+async fn live_players(_auth: AuthUser, state: AState, upgrade: WebSocketUpgrade) -> Response {
     upgrade.on_upgrade(async move |mut conn| loop {
         let Ok(_) = conn
             .send(axum::extract::ws::Message::Text(
@@ -272,12 +260,45 @@ async fn live_players(
     })
 }
 
+async fn profiles(state: &State) -> Result<Vec<String>, std::io::Error> {
+    let mut iter = tokio::fs::read_dir(&state.args.arma_modprofiles_dir).await?;
+    let mut res = vec![];
+
+    while let Some(entry) = iter.next_entry().await? {
+        res.push(entry.file_name().to_string_lossy().to_string());
+    }
+
+    Ok(res)
+}
+
+async fn switch_profile(
+    _auth: AuthUser,
+    Path(profile): Path<String>,
+    state: AState,
+) -> Result<(), http::StatusCode> {
+    let int_err = |_| StatusCode::INTERNAL_SERVER_ERROR;
+    let profiles = profiles(&state).await.map_err(int_err)?;
+
+    if !profiles.contains(&profile) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let _ = arma_action(Action::Stop).await; // probably fine if it fails
+    let _ = tokio::fs::remove_dir(&state.args.arma_profile_folder_name).await;
+    let mut result_path = state.args.arma_modprofiles_dir.clone();
+    result_path.push(profile);
+    tokio::fs::symlink(result_path, &state.args.arma_profile_folder_name)
+        .await
+        .map_err(int_err)
+}
+
 pub fn admin_router() -> Router<Arc<State>> {
     Router::new()
         .route("/login", get(login))
         .route("/login", post(login_post))
         .route("/", get(admin))
         .route("/action/{*act}", post(action))
+        .route("/switch-profile/{*profile}", post(switch_profile))
         .route(
             "/script/websocket/{*path}",
             get(|/* ensures user auth */ _auth: AuthUser, p, q, s, ws| {

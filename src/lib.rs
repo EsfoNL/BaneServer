@@ -7,6 +7,8 @@ use argon2::{
     password_hash::{rand_core::OsRng, Salt, SaltString},
     PasswordHasher,
 };
+
+pub mod strenum;
 /// return the error or a hashing error
 /// # Errors
 /// propegates argon2 errors
