@@ -4,6 +4,7 @@ use clap::Parser;
 use notify::{Config, Event, EventKind, Watcher};
 mod admin;
 mod api;
+mod blog;
 mod cli;
 mod db;
 mod message;
@@ -84,6 +85,7 @@ async fn main() {
             .route("/script/{*path}", get(webpages::scripts))
             .route("/download-zip/{*path}", get(download_zip))
             .route("/asset/{*path}", get(webpages::asset))
+            .route("/blog/{*path}", get(blog::blog))
             .route("/{*path}", get(webpages::webpages_handler))
             .with_state(state.clone());
 
