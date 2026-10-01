@@ -38,6 +38,7 @@ pub fn tera(cli: &Cli) -> Result<tera::Tera, tera::Error> {
         "filesizeformat",
         tera_contrib::filesize_format::filesize_format,
     );
+    tera.global_context().insert("blogs", &crate::blog::blogs());
 
     match tera.load_from_glob(&format!("{}/**", cli.template_dir)) {
         Ok(()) => {

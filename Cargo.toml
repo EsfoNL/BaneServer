@@ -2,18 +2,18 @@
 name = "bane-server"
 default-run = "bane-server"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 ansi-to-html = "0.2.2"
-argon2 = "0.4.1"
+argon2 = "0.6"
 async-trait = "0.1.72"
 axum = { version = "^0.8", features = ["macros", "tracing", "ws"] }
 axum-extra = { version = "0.12.6", features = ["typed-header"] }
+base64 = "0.23.1"
 clap = { version = "4.0.32", features = ["derive"] }
-console-subscriber = "0.4.0"
 dashmap = "5.4.0"
 either = "1.8.1"
 futures = "0.3.30"
@@ -32,7 +32,7 @@ tera-contrib = { version = "0.3.0", features = ["date", "filesize_format"] }
 thiserror = "1.0.57"
 tokio = { version = "1.23.0", features = ["rt-multi-thread", "macros", "tracing", "process"] }
 tokio-stream = "0.1.14"
-tokio-util = "0.7.12"
+tokio-util = { version = "0.7.12", features = ["io"] }
 toml = "0.8.9"
 tower = "0.5.3"
 tower-http = { version = "0.7.0", features = ["trace"] }

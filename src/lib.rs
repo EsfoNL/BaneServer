@@ -3,24 +3,16 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use argon2::{
-    password_hash::{rand_core::OsRng, Salt, SaltString},
-    PasswordHasher,
-};
+use argon2::PasswordHasher;
 
 pub mod strenum;
 /// return the error or a hashing error
 /// # Errors
 /// propegates argon2 errors
-pub fn hash_password(password: &str, salt: Salt) -> Result<String, argon2::password_hash::Error> {
+pub fn hash_password(password: &str, salt: &[u8]) -> Result<String, argon2::password_hash::Error> {
     Ok(argon2::Argon2::default()
-        .hash_password(password.as_bytes(), &salt)?
+        .hash_password_with_salt(password.as_bytes(), salt)?
         .to_string())
-}
-
-#[must_use]
-pub fn salt() -> SaltString {
-    SaltString::generate(OsRng)
 }
 
 pub struct DebugIgnore<T>(pub T);

@@ -1,5 +1,7 @@
+use argon2::password_hash::generate_salt;
+use base64::Engine;
 use clap::Parser;
-use sqlx::{query, sqlite::SqliteConnectOptions, ConnectOptions};
+use sqlx::{ConnectOptions, query, sqlite::SqliteConnectOptions};
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -11,8 +13,8 @@ struct Cli {
 async fn main() {
     let cli = Cli::parse();
 
-    let salt = bane_server::salt();
-    let hash = bane_server::hash_password(&cli.password, salt.as_salt()).unwrap();
+    let salt = generate_salt();
+    let hash = bane_server::hash_password(&cli.password, &salt).unwrap();
 
     let mut db = SqliteConnectOptions::new()
         .filename("db.sqlite")
@@ -20,7 +22,7 @@ async fn main() {
         .await
         .unwrap();
 
-    let salt_str = salt.as_str();
+    let salt_str = base64::engine::general_purpose::STANDARD.encode(salt);
     query!(
         "insert into users (name, hash, salt) values (?, ?, ?)",
         cli.name,

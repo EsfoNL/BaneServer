@@ -6,16 +6,17 @@ use std::{
 };
 
 use crate::{api::filestream::file_uploader, prelude::State};
-use argon2::password_hash::Salt;
+use argon2::{Argon2, PasswordVerifier, password_hash::phc::PasswordHash};
 use axum::{
+    Form, Router,
     extract::{FromRequestParts, OptionalFromRequestParts, Path, WebSocketUpgrade},
     response::{Html, Response},
     routing::{get, post},
-    Form, Router,
 };
-use bane_server::{hash_password, StrEnum};
-use http::{request, StatusCode};
-use rand::{rngs::StdRng, RngExt};
+use bane_server::{StrEnum, hash_password};
+use base64::Engine;
+use http::{StatusCode, request};
+use rand::{RngExt, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 use sqlx::query;
 use ssq::{players::Player, rules::arma3::Arma3Rules};
@@ -119,9 +120,21 @@ async fn login_post(
     .await
     .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
-    let foreign_hash = hash_password(&data.password, Salt::new(&salt).unwrap())
-        .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
-    if hash == foreign_hash {
+    // let decoded = PasswordHash::new(&salt).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // let salt_bytes: Vec<u8> = base64::engine::general_purpose::STANDARD_PAD_INDIFFERENT
+    //     .decode(salt)
+    //     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    if Argon2::default()
+        .verify_password(
+            data.password.as_bytes(),
+            &PasswordHash::new(&hash).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+        )
+        .inspect_err(|e| {
+            dbg!(e);
+        })
+        .is_ok()
+    {
         let token = rand::make_rng::<StdRng>().random::<u128>().to_string();
         let expires = (std::time::SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -236,27 +249,29 @@ impl TryFrom<Player> for JsonPlayer {
 }
 
 async fn live_players(_auth: AuthUser, state: AState, upgrade: WebSocketUpgrade) -> Response {
-    upgrade.on_upgrade(async move |mut conn| loop {
-        let Ok(_) = conn
-            .send(axum::extract::ws::Message::Text(
-                serde_json::to_string(
-                    &state
-                        .client()
-                        .players()
-                        .await
-                        .unwrap_or_default()
-                        .into_iter()
-                        .filter_map(|e| JsonPlayer::try_from(e).ok())
-                        .collect::<Vec<_>>(),
-                )
-                .unwrap_or_default()
-                .into(),
-            ))
-            .await
-        else {
-            return;
-        };
-        tokio::time::sleep(Duration::from_secs(1)).await;
+    upgrade.on_upgrade(async move |mut conn| {
+        loop {
+            let Ok(_) = conn
+                .send(axum::extract::ws::Message::Text(
+                    serde_json::to_string(
+                        &state
+                            .client()
+                            .players()
+                            .await
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter_map(|e| JsonPlayer::try_from(e).ok())
+                            .collect::<Vec<_>>(),
+                    )
+                    .unwrap_or_default()
+                    .into(),
+                ))
+                .await
+            else {
+                return;
+            };
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
     })
 }
 

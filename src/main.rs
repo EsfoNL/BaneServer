@@ -1,4 +1,4 @@
-use axum::{routing::get, Router};
+use axum::{Router, routing::get};
 use clap::Parser;
 
 use notify::{Config, Event, EventKind, Watcher};
@@ -42,18 +42,18 @@ async fn main() {
             a.update_from(std::env::args_os());
             a
         };
-        if args.tokio_console {
-            console_subscriber::init();
-        } else {
-            let filter = tracing_subscriber::filter::Targets::new()
-                .with_target("bane_server", args.log_level)
-                .with_default(tracing::Level::INFO);
-            let tracing_fmt = tracing_subscriber::fmt::layer();
-            tracing_subscriber::registry()
-                .with(filter)
-                .with(tracing_fmt)
-                .init();
-        }
+        // if args.tokio_console {
+        //     console_subscriber::init();
+        // } else {
+        let filter = tracing_subscriber::filter::Targets::new()
+            .with_target("bane_server", args.log_level)
+            .with_default(tracing::Level::INFO);
+        let tracing_fmt = tracing_subscriber::fmt::layer();
+        tracing_subscriber::registry()
+            .with(filter)
+            .with(tracing_fmt)
+            .init();
+        // }
         info!("args: {args:#?}");
         let state = Arc::new(State::new(args).await);
         *state.watcher.write().await = Some(signal_handler(state.clone()));
@@ -85,7 +85,7 @@ async fn main() {
             .route("/script/{*path}", get(webpages::scripts))
             .route("/download-zip/{*path}", get(download_zip))
             .route("/asset/{*path}", get(webpages::asset))
-            .route("/blog/{*path}", get(blog::blog))
+            // .route("/blog/{*path}", get(blog::blog))
             .route("/{*path}", get(webpages::webpages_handler))
             .with_state(state.clone());
 
@@ -108,7 +108,6 @@ async fn main() {
             .unwrap();
     };
 
-    println!("sizeof main: {}", std::mem::size_of_val(&body));
     body.await
     //warp::serve(req).run(addr).await;
 }
