@@ -55,7 +55,7 @@
         <input id="filter" type="text" value="{{filter_v}}"></input>
         <input type="submit" hidden />
     </form>
-    {% component file(data) %}
+    {% component file(data, @pub_file_prefix) %}
         {% if data.is_file %}
             {% set href = pub_file_prefix ~ data.path %}
         {% else %}
