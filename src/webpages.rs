@@ -34,6 +34,9 @@ pub fn tera(cli: &Cli) -> Result<tera::Tera, tera::Error> {
     tera.register_filter("ansi_to_html", ansi_to_html);
     tera.register_test("pub_root", is_pub_root(cli));
     tera.register_filter("date", tera_contrib::dates::date);
+    tera.global_context()
+        .insert("pub_file_prefix", &cli.pub_file_prefix);
+
     tera.register_filter(
         "filesizeformat",
         tera_contrib::filesize_format::filesize_format,
