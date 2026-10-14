@@ -188,6 +188,7 @@ async fn modpack_uploaded(path: std::path::PathBuf, state: Arc<State>) {
     let spawn_res = tokio::process::Command::new(&state.args.modpack_install_script)
         .arg(path)
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn();
 
     let mut proc = match spawn_res {
@@ -199,19 +200,37 @@ async fn modpack_uploaded(path: std::path::PathBuf, state: Arc<State>) {
     };
 
     let stdout = proc.stdout.take().expect("failed to create stdout pipe");
-
-    let mut reader = StrReader::new(stdout);
-    loop {
-        let data = match reader.read().await {
-            Ok(ok) => ok,
-            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => continue,
-            _ => break,
-        };
-        if data.is_empty() {
-            return;
+    let stderr = proc.stderr.take().expect("failed to create stderr pipe");
+    let send = state.live_logs.send.clone();
+    tokio::spawn(async move {
+        let mut reader = StrReader::new(stderr);
+        loop {
+            let data = match reader.read().await {
+                Ok(ok) => ok,
+                Err(e) if e.kind() == std::io::ErrorKind::InvalidData => continue,
+                _ => break,
+            };
+            if data.is_empty() {
+                return;
+            }
+            let _ = send.send(Arc::from(data));
         }
-        let _ = state.live_logs.send.send(Arc::from(data));
-    }
+    });
+    let send = state.live_logs.send.clone();
+    tokio::spawn(async move {
+        let mut reader = StrReader::new(stdout);
+        loop {
+            let data = match reader.read().await {
+                Ok(ok) => ok,
+                Err(e) if e.kind() == std::io::ErrorKind::InvalidData => continue,
+                _ => break,
+            };
+            if data.is_empty() {
+                return;
+            }
+            let _ = send.send(Arc::from(data));
+        }
+    });
 }
 
 pub struct Client<'a>(pub &'a State);
