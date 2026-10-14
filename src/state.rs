@@ -1,4 +1,4 @@
-use crate::{api::filestream, prelude::*};
+use crate::{admin::Logs, api::filestream, prelude::*};
 
 use bane_server::DebugIgnore;
 use futures::channel::mpsc::Sender;
@@ -19,6 +19,7 @@ pub struct State {
     pub context: tera::Context,
     pub watcher: RwLock<Option<INotifyWatcher>>,
     pub client: DebugIgnore<ssq::nonblocking::Client>,
+    pub live_logs: crate::admin::Logs,
 }
 
 impl State {
@@ -40,6 +41,7 @@ impl State {
             tera: RwLock::new(tera.ok()),
             context,
             watcher: RwLock::new(None),
+            live_logs: Logs::new(&args),
             args,
             pages: LazyLock::new(Box::new(|| {
                 let mut tera = Tera::new();
@@ -52,7 +54,7 @@ impl State {
             client,
         }
     }
-    pub fn client(&self) -> crate::admin::Client {
-        crate::admin::Client(&self)
+    pub fn client(&self) -> crate::admin::Client<'_> {
+        crate::admin::Client(self)
     }
 }

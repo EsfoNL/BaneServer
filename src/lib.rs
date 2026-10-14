@@ -5,6 +5,7 @@ use std::{
 
 use argon2::PasswordHasher;
 
+pub mod str_reader;
 pub mod strenum;
 /// return the error or a hashing error
 /// # Errors

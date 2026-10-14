@@ -1,27 +1,31 @@
 use std::{
     convert::Infallible,
+    process::Stdio,
     str::FromStr,
     sync::Arc,
     time::{Duration, UNIX_EPOCH},
 };
 
-use crate::{api::filestream::file_uploader, prelude::State};
+use crate::{api::filestream::file_uploader, cli::Cli, prelude::State};
 use argon2::{Argon2, PasswordVerifier, password_hash::phc::PasswordHash};
 use axum::{
     Form, Router,
-    extract::{FromRequestParts, OptionalFromRequestParts, Path, WebSocketUpgrade},
+    extract::{
+        FromRequestParts, OptionalFromRequestParts, Path, WebSocketUpgrade,
+        ws::{Message, Utf8Bytes},
+    },
     response::{Html, Response},
     routing::{get, post},
 };
-use bane_server::{StrEnum, hash_password};
-use base64::Engine;
+use bane_server::{StrEnum, str_reader::StrReader};
 use http::{StatusCode, request};
 use rand::{RngExt, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 use sqlx::query;
 use ssq::{players::Player, rules::arma3::Arma3Rules};
 use tera::Context;
-use tracing::info;
+use tokio::io::AsyncReadExt;
+use tracing::{debug, error, info};
 
 type AState = axum::extract::State<Arc<State>>;
 
@@ -181,11 +185,33 @@ async fn mission_uploaded(path: std::path::PathBuf, state: Arc<State>) {
 
 #[tracing::instrument(skip(state))]
 async fn modpack_uploaded(path: std::path::PathBuf, state: Arc<State>) {
-    let _ = tokio::process::Command::new(&state.args.modpack_install_script)
+    let spawn_res = tokio::process::Command::new(&state.args.modpack_install_script)
         .arg(path)
-        .status()
-        .await;
-    // debug!("modpack upload")
+        .stdout(Stdio::piped())
+        .spawn();
+
+    let mut proc = match spawn_res {
+        Ok(e) => e,
+        Err(e) => {
+            error!("failed to spawn modpack install script: {e}");
+            return;
+        }
+    };
+
+    let stdout = proc.stdout.take().expect("failed to create stdout pipe");
+
+    let mut reader = StrReader::new(stdout);
+    loop {
+        let data = match reader.read().await {
+            Ok(ok) => ok,
+            Err(e) if e.kind() == std::io::ErrorKind::InvalidData => continue,
+            _ => break,
+        };
+        if data.is_empty() {
+            return;
+        }
+        let _ = state.live_logs.send.send(Arc::from(data));
+    }
 }
 
 pub struct Client<'a>(pub &'a State);
@@ -252,7 +278,7 @@ async fn live_players(_auth: AuthUser, state: AState, upgrade: WebSocketUpgrade)
     upgrade.on_upgrade(async move |mut conn| {
         loop {
             let Ok(_) = conn
-                .send(axum::extract::ws::Message::Text(
+                .send(Message::Text(
                     serde_json::to_string(
                         &state
                             .client()
@@ -307,6 +333,74 @@ async fn switch_profile(
         .map_err(int_err)
 }
 
+#[derive(Debug)]
+pub struct Logs {
+    recv: tokio::sync::broadcast::Receiver<Arc<str>>,
+    send: tokio::sync::broadcast::Sender<Arc<str>>,
+    arma_logs: tokio::task::JoinHandle<()>,
+}
+
+impl Logs {
+    pub fn new(_cli: &Cli) -> Self {
+        let (send, recv) = tokio::sync::broadcast::channel(64);
+        let tx_task = send.clone();
+        let dev = cfg!(debug_assertions);
+        let arma_logs = tokio::spawn(async move {
+            loop {
+                let mut task = tokio::process::Command::new("./scripts/admin/live-logs");
+                if dev {
+                    task.env("DEV", "1");
+                }
+
+                let Ok(mut proc) = task.stdout(Stdio::piped()).spawn() else {
+                    error!("couldnt spawn the log watcher task");
+                    return;
+                };
+                let stdout = proc.stdout.take().expect("failed to create pipe somehow");
+                let mut reader = StrReader::new(stdout);
+                loop {
+                    let data = match reader.read().await {
+                        Ok(ok) => ok,
+                        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => continue,
+                        e => {
+                            error!("{e:?}");
+                            break;
+                        }
+                    };
+                    if data.is_empty() {
+                        break; // eof
+                    }
+                    let _ = tx_task.send(Arc::from(data));
+                }
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            }
+        });
+        Self {
+            recv,
+            send,
+            arma_logs,
+        }
+    }
+}
+
+pub async fn live_logs(_auth: AuthUser, state: AState, upgrade: WebSocketUpgrade) -> Response {
+    upgrade.on_upgrade(async move |mut ws| {
+        debug!("reconnect");
+        let mut chan = state.live_logs.recv.resubscribe();
+        loop {
+            match chan.recv().await {
+                Ok(v) => {
+                    let msg = Message::Text(Utf8Bytes::from(&*v));
+                    if ws.send(msg).await.is_err() {
+                        return;
+                    }
+                }
+                Err(e) => error!("{e}"),
+            }
+        }
+    })
+}
+
 pub fn admin_router() -> Router<Arc<State>> {
     Router::new()
         .route("/login", get(login))
@@ -320,6 +414,7 @@ pub fn admin_router() -> Router<Arc<State>> {
                 crate::script::websocket_scripts(std::path::Path::new("scripts/admin"), p, q, s, ws)
             }),
         )
+        .route("/live-logs", get(live_logs))
         .route("/live-players", get(live_players))
         .nest("/modpack", file_uploader("/tmp", modpack_uploaded))
         .nest("/mission", file_uploader("/tmp", mission_uploaded))

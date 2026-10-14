@@ -35,6 +35,7 @@ async fn main() {
                 #[cfg(not(debug_assertions))]
                 "config.toml",
             ) {
+                println!("{}", f);
                 toml::from_str(&f).unwrap()
             } else {
                 cli::Cli::default()
@@ -94,11 +95,6 @@ async fn main() {
             std::net::Ipv4Addr::new(127, 0, 0, 1).into(),
             state.args.http_port,
         );
-        if state.args.dev {
-            info!("running dev mode!");
-        } else {
-            info!("running normal mode!")
-        }
         let tcp_listener = tokio::net::TcpListener::bind(&addr)
             .await
             .unwrap_or_else(|_| panic!("failed to bind to {}", addr));

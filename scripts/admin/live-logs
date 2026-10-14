@@ -1,9 +1,9 @@
 #!/bin/env nu
-let $query = $env.QUERY | from json
+# let $query = $env.QUERY | from json
 
 if $env.DEV? != null {
-  ssh root@esfokk.nl -- journalctl (if $query.no-initial? == "true" {"-n0"} else {""}) -fu arma -o cat
+  ssh root@esfokk.nl -- journalctl  -fu arma -o cat
 } else {
-  journalctl (if $query.no-initial? == "true" {"-n0"} else {""}) -fu arma -o cat
+  journalctl  -fu arma -o cat
 }
 

@@ -20,7 +20,7 @@ addEventListener("DOMContentLoaded", (event) => {
   let oncls = () => {
     blinkenlight_logs.removeAttribute("live");
     setTimeout(() => {
-      ws_logs = new WebSocket("/admin/script/websocket/live-logs?no-initial=true");
+      ws_logs = new WebSocket("/admin/live-logs");
       ws_logs.onmessage = onmsg;
       ws_logs.onclose = oncls;
       ws_logs.onopen = onopen;
@@ -29,7 +29,7 @@ addEventListener("DOMContentLoaded", (event) => {
       console.log("reconnect", sleep);
     }, sleep)
   }
-  ws_logs = new WebSocket("/admin/script/websocket/live-logs");
+  ws_logs = new WebSocket("/admin/live-logs");
   ws_logs.onmessage = onmsg;
   ws_logs.onclose = oncls;
   ws_logs.onopen = onopen;

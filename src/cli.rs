@@ -48,7 +48,6 @@ impl Default for Cli {
             sqlusername: None,
             static_dir: String::from("/www"),
             template_dir: String::from("templates"),
-            dev: false,
             tokio_console: false,
             gitea_port: 3000,
             log_level: tracing::Level::INFO,
@@ -96,10 +95,6 @@ pub struct Cli {
 
     #[arg(long)]
     pub template_dir: String,
-
-    #[arg(long)]
-    /// enable dev mode
-    pub dev: bool,
 
     #[arg(long)]
     pub tokio_console: bool,
