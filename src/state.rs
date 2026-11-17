@@ -11,7 +11,7 @@ use tokio::sync::RwLock;
 #[allow(unused)]
 pub struct State {
     pub db: Db,
-    pub args: Cli,
+    pub args: Cfg,
     pub filestreams: filestream::FileStreams,
     pub subscribers: dashmap::DashMap<Id, Sender<MessageType>>,
     pub tera: RwLock<Option<Tera>>,
@@ -23,7 +23,7 @@ pub struct State {
 }
 
 impl State {
-    pub async fn new(args: Cli) -> Self {
+    pub async fn new(args: Cfg) -> Self {
         let db = crate::db::configure(&args).await;
         info!("db thing done");
         let subscribers = dashmap::DashMap::new();

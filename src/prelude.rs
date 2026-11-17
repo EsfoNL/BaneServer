@@ -1,4 +1,4 @@
-pub use crate::{cli::Cli, state::State};
+pub use crate::{cli::Cfg, state::State};
 use sqlx::SqlitePool;
 pub use std::sync::Arc;
 pub type Id = u64;

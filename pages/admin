@@ -15,6 +15,7 @@
 			<button id="start" class="inline">Start</button>
 			<button id="stop" class="inline">Stop</button>
 			<button id="restart" class="inline">Restart</button>
+			<button id="update" class="inline">Update mods</button>
 			<h1>Uploads</h1>
 			<div class="twocolumn">
 				<div>

@@ -35,7 +35,7 @@ where
     d.deserialize_str(V)
 }
 
-impl Default for Cli {
+impl Default for Cfg {
     fn default() -> Self {
         Self {
             http_port: 80,
@@ -55,17 +55,18 @@ impl Default for Cli {
             pub_file_prefix: String::new(),
             scripts_path: PathBuf::from_str("/srv/scripts").unwrap(),
             arma_mission_dir: PathBuf::from("/home/arma/arma/mpmissions"),
-            modpack_install_script: PathBuf::from("/bin/true"),
+            modpack_install_script: PathBuf::from("./dummy-installer.nu"),
             steam_query_addr: SocketAddrV4::from_str("127.0.0.1:2303").unwrap(),
             arma_modprofiles_dir: "/home/arma/arma/profiles".into(),
             arma_profile_folder_name: "/home/arma/arma/mods".into(),
+            mod_update_script: PathBuf::from("./dummy-installer.nu"),
         }
     }
 }
 
 #[derive(Parser, Debug, Deserialize)]
 #[serde(default)]
-pub struct Cli {
+pub struct Cfg {
     #[arg(long)]
     pub http_port: u16,
 
@@ -127,4 +128,6 @@ pub struct Cli {
     pub arma_modprofiles_dir: PathBuf,
     #[arg(long)]
     pub arma_profile_folder_name: PathBuf,
+    #[arg(long)]
+    pub mod_update_script: PathBuf,
 }

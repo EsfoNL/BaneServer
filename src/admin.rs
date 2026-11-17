@@ -6,7 +6,7 @@ use std::{
     time::{Duration, UNIX_EPOCH},
 };
 
-use crate::{api::filestream::file_uploader, cli::Cli, prelude::State};
+use crate::{api::filestream::file_uploader, cli::Cfg, prelude::State};
 use argon2::{Argon2, PasswordVerifier, password_hash::phc::PasswordHash};
 use axum::{
     Form, Router,
@@ -24,8 +24,8 @@ use serde::{Deserialize, Serialize};
 use sqlx::query;
 use ssq::{players::Player, rules::arma3::Arma3Rules};
 use tera::Context;
-use tokio::io::AsyncReadExt;
-use tracing::{debug, error, info};
+use tokio::{io::AsyncRead, process::Command};
+use tracing::{debug, error, info, warn};
 
 type AState = axum::extract::State<Arc<State>>;
 
@@ -115,7 +115,11 @@ async fn login_post(
 ) -> Result<Response, http::StatusCode> {
     // HeaderMap::new()
     let name = data.name;
-    let Row { name, hash, salt } = sqlx::query_as!(
+    let Row {
+        name,
+        hash,
+        salt: _,
+    } = sqlx::query_as!(
         Row,
         "select name, hash, salt from users where name = ?",
         name
@@ -185,7 +189,7 @@ async fn mission_uploaded(path: std::path::PathBuf, state: Arc<State>) {
 
 #[tracing::instrument(skip(state))]
 async fn modpack_uploaded(path: std::path::PathBuf, state: Arc<State>) {
-    let spawn_res = tokio::process::Command::new(&state.args.modpack_install_script)
+    let spawn_res = Command::new(&state.args.modpack_install_script)
         .arg(path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -201,36 +205,8 @@ async fn modpack_uploaded(path: std::path::PathBuf, state: Arc<State>) {
 
     let stdout = proc.stdout.take().expect("failed to create stdout pipe");
     let stderr = proc.stderr.take().expect("failed to create stderr pipe");
-    let send = state.live_logs.send.clone();
-    tokio::spawn(async move {
-        let mut reader = StrReader::new(stderr);
-        loop {
-            let data = match reader.read().await {
-                Ok(ok) => ok,
-                Err(e) if e.kind() == std::io::ErrorKind::InvalidData => continue,
-                _ => break,
-            };
-            if data.is_empty() {
-                return;
-            }
-            let _ = send.send(Arc::from(data));
-        }
-    });
-    let send = state.live_logs.send.clone();
-    tokio::spawn(async move {
-        let mut reader = StrReader::new(stdout);
-        loop {
-            let data = match reader.read().await {
-                Ok(ok) => ok,
-                Err(e) if e.kind() == std::io::ErrorKind::InvalidData => continue,
-                _ => break,
-            };
-            if data.is_empty() {
-                return;
-            }
-            let _ = send.send(Arc::from(data));
-        }
-    });
+    state.live_logs.read_from(stdout);
+    state.live_logs.read_from(stderr);
 }
 
 pub struct Client<'a>(pub &'a State);
@@ -263,20 +239,50 @@ async fn admin(state: AState, _auth: AuthUser) -> Html<String> {
     // info!("rules_result: {rules_result:?}");
     state.pages.render("admin", &context).unwrap().into()
 }
-StrEnum!(Action, [Stop => "stop", Start => "start", Restart => "restart"]);
+StrEnum!(Action, [Stop => "stop", Start => "start", Restart => "restart", Update => "update"]);
 
-/// non validated action!
-async fn arma_action(action: Action) -> Result<(), http::StatusCode> {
-    tokio::process::Command::new("systemctl")
-        .args([action.to_str(), "arma"])
-        .status()
-        .await
-        .map(|_| ())
-        .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)
+#[tracing::instrument(skip(state))]
+async fn arma_action(state: &State, action: Action) -> Result<(), http::StatusCode> {
+    match action {
+        Action::Start | Action::Stop | Action::Restart => Command::new("systemctl")
+            .args([action.to_str(), "arma"])
+            .status()
+            .await
+            .map(|_| ())
+            .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR),
+        Action::Update => {
+            if let Err(e) = Command::new("systemctl")
+                .args(["stop", "arma"])
+                .status()
+                .await
+            {
+                warn!("stopping arma failed: {e}")
+            };
+            let mut child = Command::new(&state.args.mod_update_script)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR)?;
+            // state.live_logs.recv
+            let stderr = child.stderr.take().expect("failed to create stderr");
+            let stdout = child.stdout.take().expect("failed to create stdout");
+            state.live_logs.read_from(stderr);
+            state.live_logs.read_from(stdout);
+            Ok(())
+        }
+    }
 }
 
-async fn action(Path(action): Path<String>, _auth: AuthUser) -> Result<(), http::StatusCode> {
-    arma_action(Action::from_str(&action).map_err(|_| http::StatusCode::BAD_REQUEST)?).await
+async fn action(
+    Path(action): Path<String>,
+    _auth: AuthUser,
+    state: AState,
+) -> Result<(), http::StatusCode> {
+    arma_action(
+        &state,
+        Action::from_str(&action).map_err(|_| http::StatusCode::BAD_REQUEST)?,
+    )
+    .await
 }
 
 #[derive(Serialize)]
@@ -343,7 +349,7 @@ async fn switch_profile(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let _ = arma_action(Action::Stop).await; // probably fine if it fails
+    let _ = arma_action(&state, Action::Stop).await; // probably fine if it fails
     let _ = tokio::fs::remove_dir(&state.args.arma_profile_folder_name).await;
     let mut result_path = state.args.arma_modprofiles_dir.clone();
     result_path.push(profile);
@@ -360,13 +366,13 @@ pub struct Logs {
 }
 
 impl Logs {
-    pub fn new(_cli: &Cli) -> Self {
+    pub fn new(_cli: &Cfg) -> Self {
         let (send, recv) = tokio::sync::broadcast::channel(64);
         let tx_task = send.clone();
         let dev = cfg!(debug_assertions);
         let arma_logs = tokio::spawn(async move {
             loop {
-                let mut task = tokio::process::Command::new("./scripts/admin/live-logs");
+                let mut task = Command::new("./scripts/admin/live-logs");
                 if dev {
                     task.env("DEV", "1");
                 }
@@ -399,6 +405,24 @@ impl Logs {
             send,
             arma_logs,
         }
+    }
+
+    fn read_from<R: AsyncRead + Unpin + Send + 'static>(&self, read: R) {
+        let send = self.send.clone();
+        tokio::spawn(async move {
+            let mut reader = StrReader::new(read);
+            loop {
+                let data = match reader.read().await {
+                    Ok(ok) => ok,
+                    Err(e) if e.kind() == std::io::ErrorKind::InvalidData => continue,
+                    _ => break,
+                };
+                if data.is_empty() {
+                    return;
+                }
+                let _ = send.send(Arc::from(data));
+            }
+        });
     }
 }
 

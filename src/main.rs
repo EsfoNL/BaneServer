@@ -38,7 +38,7 @@ async fn main() {
                 println!("{}", f);
                 toml::from_str(&f).unwrap()
             } else {
-                cli::Cli::default()
+                cli::Cfg::default()
             };
             a.update_from(std::env::args_os());
             a

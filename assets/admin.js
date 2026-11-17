@@ -44,10 +44,10 @@ mission_button.onclick = uploader(mission_button, mission, mission_progress, "/a
 modpack_button.onclick = uploader(modpack_button, modpack, modpack_progress, "/admin/modpack/")
 
 const action = (act) => (() => fetch("/admin/action/" + act, { method: "POST" }))
-start.onclick = action("start");
+document.getElementById("start").onclick = action("start");
 document.getElementById("stop").onclick = action("stop");
-restart.onclick = action("restart");
-
+document.getElementById("restart").onclick = action("restart");
+document.getElementById("update").onclick = action("update");
 
 const players = document.getElementById("players");
 const blinkenlight = document.getElementById("blinkenlight");

@@ -1,6 +1,7 @@
 #[macro_export]
 macro_rules! StrEnum {
     ($name:ident, [$($mem:ident => $str:literal),*]) => {
+        #[derive(Debug, PartialEq)]
         enum $name {
             $($mem),*
         }

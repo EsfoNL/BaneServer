@@ -23,7 +23,7 @@ thread_local! {
     static TERA_CTX: RefCell<TeraContext> = RefCell::new(TeraContext::default());
 }
 
-pub fn tera(cli: &Cli) -> Result<tera::Tera, tera::Error> {
+pub fn tera(cli: &Cfg) -> Result<tera::Tera, tera::Error> {
     let mut tera = Tera::new();
     tera.register_function("command", command);
     tera.register_function("sh", shell_command);
@@ -117,7 +117,7 @@ fn obj(args: Kwargs, _: &tera::State) -> tera::TeraResult<HashMap<String, tera::
         .collect())
 }
 
-pub fn tera_context(cli: &Cli) -> tera::Context {
+pub fn tera_context(cli: &Cfg) -> tera::Context {
     let mut context = tera::Context::new();
     context.insert("pub_file_prefix", &cli.pub_file_prefix);
     context
@@ -253,7 +253,7 @@ fn to_json_or_string(string: &str) -> tera::Value {
 type TeraBoxedTester =
     Box<dyn Send + Sync + Fn(&tera::Value, Kwargs, &tera::State) -> Result<bool, tera::Error>>;
 
-fn is_pub_root(cli: &Cli) -> TeraBoxedTester {
+fn is_pub_root(cli: &Cfg) -> TeraBoxedTester {
     let mut path = std::env::current_dir().unwrap();
     let failed_to_construct_path: TeraBoxedTester = Box::new(|_, _, _| {
         error!("Tera pub dir not set");
@@ -295,7 +295,7 @@ struct FileInfo {
     atime: i64,
 }
 
-fn files(cli: &Cli) -> TeraBoxedFn {
+fn files(cli: &Cfg) -> TeraBoxedFn {
     let mut path = std::env::current_dir().unwrap();
     let Some(add_path) = cli.pub_dir.as_ref().map(std::path::PathBuf::from) else {
         return Box::new(|_, _| {
