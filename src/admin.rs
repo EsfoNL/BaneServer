@@ -251,13 +251,6 @@ async fn arma_action(state: &State, action: Action) -> Result<(), http::StatusCo
             .map(|_| ())
             .map_err(|_| http::StatusCode::INTERNAL_SERVER_ERROR),
         Action::Update => {
-            if let Err(e) = Command::new("systemctl")
-                .args(["stop", "arma"])
-                .status()
-                .await
-            {
-                warn!("stopping arma failed: {e}")
-            };
             let mut child = Command::new(&state.args.mod_update_script)
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
